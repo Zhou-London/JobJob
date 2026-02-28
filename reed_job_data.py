@@ -121,12 +121,12 @@ def main() -> int:
         search_response = search_jobs(args.api_key, params)
         if args.include_details:
             results = search_response.get("results", [])
-            details = []
             for job in results:
                 job_id = job.get("jobId")
                 if isinstance(job_id, int):
-                    details.append(get_job_details(args.api_key, job_id))
-            search_response["jobDetails"] = details
+                    full_job = get_job_details(args.api_key, job_id)
+                    # Keep the search row shape, but override with full job fields.
+                    job.update(full_job)
     except RuntimeError as error:
         print(str(error), file=sys.stderr)
         return 1
