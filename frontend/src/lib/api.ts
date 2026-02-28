@@ -1,8 +1,10 @@
 /**
  * API client utilities for the JobJob backend.
+ * Requests use relative paths so they go through Next.js rewrites
+ * (see next.config.ts) which proxies /api/* → localhost:8000.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 // ---------- Generic helpers ----------
 
