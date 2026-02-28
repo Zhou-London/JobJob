@@ -463,7 +463,7 @@ JobJob/
 
 ### Prerequisites
 
-- Python 3.10+
+- [uv](https://docs.astral.sh/uv/) (Python package & project manager)
 - Node.js 18+
 - npm or pnpm
 - Anthropic API key ([console.anthropic.com](https://console.anthropic.com))
@@ -482,15 +482,13 @@ cp .env.example .env
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync
 
 # Install Playwright browsers (for auto-apply)
 npx -y @anthropic-ai/mcp-server-playwright install
 
 # Run the server
-uvicorn app.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8000
 ```
 
 ### Frontend
