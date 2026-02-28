@@ -6,7 +6,20 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _parse_reed_date(value: str | datetime | None) -> datetime | None:
+    """Parse dates from Reed API which uses dd/mm/yyyy format."""
+    if value is None or isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        for fmt in ("%d/%m/%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+    return None
 
 
 class JobType(str, Enum):
@@ -42,6 +55,11 @@ class JobListing(BaseModel):
     )
     job_url: Optional[str] = Field(default=None, description="Reed listing URL")
     date_posted: Optional[datetime] = None
+
+    @field_validator("date_posted", "expiration_date", mode="before")
+    @classmethod
+    def _parse_dates(cls, v: str | datetime | None) -> datetime | None:
+        return _parse_reed_date(v)
 
     @classmethod
     def from_reed_search(cls, data: dict) -> "JobListing":
