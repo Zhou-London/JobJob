@@ -6,12 +6,6 @@ import DeliveryPanel from "@/components/DeliveryPanel";
 
 // --- Types & Constants ---
 
-interface ChatMessage {
-  id: string;
-  role: "bot" | "user";
-  text: string;
-}
-
 type InputType = "text" | "choice" | "textarea" | "textarea-mic" | "file-or-skip";
 
 interface ChatQuestion {
@@ -60,7 +54,6 @@ const QUESTIONS: ChatQuestion[] = [
 export default function Home() {
   const [phase, setPhase] = useState<"landing" | "chat" | "complete">("landing");
   const [questionIndex, setQuestionIndex] = useState(0);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [userData, setUserData] = useState<UserData>(initialUserData);
   const [inputValue, setInputValue] = useState("");
   const [showDeliveryPanel, setShowDeliveryPanel] = useState(false);
@@ -69,16 +62,10 @@ export default function Home() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const hasData = Object.values(userData).some((v) => v !== "");
-
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   // Auto-focus input when question changes
   useEffect(() => {
@@ -98,34 +85,24 @@ export default function Home() {
     []
   );
 
-  const addMessage = useCallback((role: "bot" | "user", text: string) => {
-    setMessages((prev) => [
-      ...prev,
-      { id: `${Date.now()}-${Math.random()}`, role, text },
-    ]);
-  }, []);
-
   const advanceToNextQuestion = useCallback(
     (currentIndex: number) => {
       const nextIndex = currentIndex + 1;
       if (nextIndex >= QUESTIONS.length) {
         setPhase("complete");
         setShowDeliveryPanel(true);
-        addMessage("bot", "All set! We\u2019re processing your profile.");
       } else {
         setQuestionIndex(nextIndex);
-        addMessage("bot", QUESTIONS[nextIndex].botMessage);
         setInputValue("");
       }
     },
-    [addMessage]
+    []
   );
 
   // --- Handlers ---
 
   const handleStart = () => {
     setPhase("chat");
-    addMessage("bot", QUESTIONS[0].botMessage);
   };
 
   const handleSubmit = (value?: string) => {
@@ -134,10 +111,7 @@ export default function Home() {
     if (!answer && !q.optional) return;
 
     if (answer) {
-      addMessage("user", answer);
       update(q.field, answer);
-    } else {
-      addMessage("user", "Skipped");
     }
     setInputValue("");
     advanceToNextQuestion(questionIndex);
@@ -146,14 +120,12 @@ export default function Home() {
   const handleCVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      addMessage("user", `Uploaded: ${file.name}`);
       update("cvFileName", file.name);
       advanceToNextQuestion(questionIndex);
     }
   };
 
   const handleCVSkip = () => {
-    addMessage("user", "Skipped");
     advanceToNextQuestion(questionIndex);
   };
 
@@ -337,7 +309,6 @@ export default function Home() {
             {q.optional && (
               <button
                 onClick={() => {
-                  addMessage("user", "Skipped");
                   setInputValue("");
                   advanceToNextQuestion(questionIndex);
                 }}
@@ -384,30 +355,26 @@ export default function Home() {
         <InfoPanel userData={userData} />
       </div>
 
-      {/* Center chat area */}
-      <div className="flex-1 flex flex-col h-full">
-        {/* Message history */}
-        <div className="flex-1 overflow-y-auto px-8 pt-8 pb-4">
-          <div className="max-w-xl mx-auto space-y-4">
-            {messages.map((msg) => (
-              <div key={msg.id} className="chat-message text-center">
-                {msg.role === "bot" ? (
-                  <p className="text-lg font-semibold text-black">{msg.text}</p>
-                ) : (
-                  <p className="text-sm text-gray-400">{msg.text}</p>
-                )}
-              </div>
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
+      {/* Center area — prompt + input, vertically centered */}
+      <div className="flex-1 flex items-center justify-center px-8">
+        <div className="w-full max-w-2xl text-center">
+          {phase === "chat" && questionIndex < QUESTIONS.length && (
+            <div key={questionIndex} className="chat-message">
+              <h2 className="text-3xl font-semibold text-black mb-8">
+                {QUESTIONS[questionIndex].botMessage}
+              </h2>
+              {renderInput()}
+            </div>
+          )}
+          {phase === "complete" && (
+            <div className="chat-message">
+              <h2 className="text-3xl font-semibold">All set!</h2>
+              <p className="mt-4 text-gray-400">
+                We&apos;re processing your profile
+              </p>
+            </div>
+          )}
         </div>
-
-        {/* Input area pinned to bottom */}
-        {phase === "chat" && (
-          <div className="px-8 pb-8 pt-4">
-            <div className="max-w-xl mx-auto">{renderInput()}</div>
-          </div>
-        )}
       </div>
 
       {/* Right delivery panel */}
