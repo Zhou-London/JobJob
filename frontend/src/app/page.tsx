@@ -4,6 +4,30 @@ import { useState, useRef, useEffect } from "react";
 import InfoPanel, { type UserProfile } from "@/components/InfoPanel";
 import JobsPanel, { type JobData } from "@/components/JobsPanel";
 import { Send, Paperclip, Mic, User as UserIcon, Bot, Loader2, FileText, Sparkles, Command, Download } from "lucide-react";
+import ReactMarkdown, { type Components } from "react-markdown";
+
+const markdownComponents: Components = {
+  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-1">{children}</ol>,
+  li: ({ children }) => <li>{children}</li>,
+  h1: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-3 first:mt-0">{children}</h2>,
+  h2: ({ children }) => <h3 className="text-base font-semibold mb-2 mt-3 first:mt-0">{children}</h3>,
+  h3: ({ children }) => <h4 className="text-sm font-semibold mb-1 mt-2 first:mt-0">{children}</h4>,
+  pre: ({ children }) => (
+    <pre className="bg-gray-900 text-gray-100 p-3 rounded-lg overflow-x-auto mb-2 text-sm">{children}</pre>
+  ),
+  code: ({ children }) => (
+    <code className="bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded text-[13px]">{children}</code>
+  ),
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{children}</a>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-3 border-gray-300 pl-3 italic text-gray-600 mb-2">{children}</blockquote>
+  ),
+};
 
 interface Message {
   id: string;
@@ -60,7 +84,7 @@ export default function Home() {
     if (!textToSend) return;
 
     // Add user message to UI immediately
-    const userMsg: Message = { id: Date.now().toString(), role: "user", content: textToSend };
+    const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: textToSend };
     setMessages((prev) => [...prev, userMsg]);
     setInputValue("");
     setIsTyping(true);
@@ -81,13 +105,11 @@ export default function Home() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
 
+      // Track the "active" agent text message — created lazily on first text event
       let currentAgentMsg = "";
-      const agentMsgId = (Date.now() + 1).toString();
-
-      setMessages((prev) => [
-        ...prev,
-        { id: agentMsgId, role: "agent", content: "" }
-      ]);
+      let activeAgentMsgId: string | null = null;
+      // Queue of tool-call message IDs so tool_result can update them in-place
+      const pendingToolIds: string[] = [];
 
       while (true) {
         const { value, done } = await reader.read();
@@ -108,39 +130,46 @@ export default function Home() {
 
               if (eventType === "text") {
                 try {
-                  // Sometimes the Anthropic API or our backend sends raw text wrapped in quotes, or just raw text.
-                  // We should handle parsing safely.
-                  let parsedText = "";
-                  if (dataStr.startsWith('"') && dataStr.endsWith('"')) {
-                    parsedText = JSON.parse(dataStr);
-                  } else {
-                    parsedText = dataStr;
-                  }
-
-                  if (parsedText) {
-                    currentAgentMsg += parsedText.replace(/\\n/g, '\n');
-                    setMessages((prev) => prev.map(m =>
-                      m.id === agentMsgId ? { ...m, content: currentAgentMsg } : m
-                    ));
+                  const parsed = JSON.parse(dataStr);
+                  const textContent = parsed.content ?? "";
+                  if (textContent) {
+                    if (!activeAgentMsgId) {
+                      activeAgentMsgId = crypto.randomUUID();
+                      currentAgentMsg = "";
+                    }
+                    currentAgentMsg += textContent;
+                    // Capture values so the updater doesn't read stale mutable vars
+                    const id = activeAgentMsgId;
+                    const content = currentAgentMsg;
+                    setMessages((prev) => {
+                      const exists = prev.some(m => m.id === id);
+                      if (exists) {
+                        return prev.map(m => m.id === id ? { ...m, content } : m);
+                      }
+                      return [...prev, { id, role: "agent" as const, content }];
+                    });
                   }
                 } catch (e) {
                   console.error("Error parsing text event", e, dataStr);
                 }
               } else if (eventType === "tool_call") {
+                // Close any open text message so subsequent text starts a new bubble
+                activeAgentMsgId = null;
                 try {
                   const data = JSON.parse(dataStr);
-                  const toolMsg: Message = {
-                    id: Date.now() + Math.random().toString(),
-                    role: "agent",
-                    content: `Executing action: ${data.name}...`,
+                  const toolMsgId = crypto.randomUUID();
+                  pendingToolIds.push(toolMsgId);
+                  setMessages((prev) => [...prev, {
+                    id: toolMsgId,
+                    role: "agent" as const,
+                    content: `Executing: ${data.name}...`,
                     isToolCall: true
-                  };
-                  setMessages((prev) => [...prev, toolMsg]);
+                  }]);
                 } catch (e) { }
               } else if (eventType === "tool_result") {
                 try {
                   const data = JSON.parse(dataStr);
-                  let completedMsg = `Action ${data.name} completed.`;
+                  let completedMsg = `${data.name} completed.`;
 
                   // Update left sidebar from profile tool results
                   if (data.name === "update_profile_summary" && data.result) {
@@ -208,20 +237,35 @@ export default function Home() {
                     } catch (e) { }
                   }
 
-                  const toolMsg: Message = {
-                    id: Date.now() + Math.random().toString(),
-                    role: "agent",
-                    content: completedMsg,
-                    isToolCall: true
-                  };
-                  setMessages((prev) => [...prev, toolMsg]);
+                  // Update the matching tool_call message in-place
+                  const toolMsgId = pendingToolIds.shift();
+                  if (toolMsgId) {
+                    const msg = completedMsg;
+                    setMessages((prev) => prev.map(m =>
+                      m.id === toolMsgId ? { ...m, content: msg } : m
+                    ));
+                  }
                 } catch (e) { }
+              } else if (eventType === "done") {
+                // "done" carries the full concatenated text — already streamed via
+                // individual "text" events, so we only use it as a fallback.
+                if (!activeAgentMsgId) {
+                  try {
+                    const parsed = JSON.parse(dataStr);
+                    if (parsed.content) {
+                      const fallbackId = crypto.randomUUID();
+                      setMessages((prev) => [
+                        ...prev,
+                        { id: fallbackId, role: "agent", content: parsed.content }
+                      ]);
+                    }
+                  } catch (e) { }
+                }
               } else if (eventType === "session") {
                 try {
                   const data = JSON.parse(dataStr);
                   if (data.session_id) {
                     setSessionId(data.session_id);
-                    // Fetch profile again after a chat turn
                     fetchProfile(data.session_id);
                   }
                 } catch (e) { }
@@ -230,7 +274,7 @@ export default function Home() {
                   const data = JSON.parse(dataStr);
                   setMessages((prev) => [
                     ...prev,
-                    { id: Date.now().toString(), role: "agent", content: `Error: ${data.detail}`, isToolCall: true }
+                    { id: crypto.randomUUID(), role: "agent", content: `Error: ${data.content || data.detail || "Unknown error"}`, isToolCall: true }
                   ]);
                 } catch (e) { }
               }
@@ -260,7 +304,7 @@ export default function Home() {
 
     // Add optimistic user message for file
     const uploadMsg: Message = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       role: "user",
       content: `Uploaded: ${file.name}`
     };
@@ -284,13 +328,13 @@ export default function Home() {
         if (data.message) {
           setMessages((prev) => [
             ...prev,
-            { id: Date.now().toString(), role: "agent", content: data.message }
+            { id: crypto.randomUUID(), role: "agent", content: data.message }
           ]);
         }
       } else {
         setMessages((prev) => [
           ...prev,
-          { id: Date.now().toString(), role: "agent", content: "Failed to upload CV.", isToolCall: true }
+          { id: crypto.randomUUID(), role: "agent", content: "Failed to upload CV.", isToolCall: true }
         ]);
       }
     } catch (error) {
@@ -347,10 +391,12 @@ export default function Home() {
 
   return (
     <div className="h-screen w-full flex overflow-hidden bg-white text-gray-900 font-sans">
-      {/* Left Column: User Profile */}
-      <div className="w-80 flex-shrink-0 border-r border-gray-200">
-        <InfoPanel profile={profile} />
-      </div>
+      {/* Left Column: User Profile — slides in when profile data arrives */}
+      {profile && (
+        <div className="w-80 flex-shrink-0 border-r border-gray-200 slide-in-left">
+          <InfoPanel profile={profile} />
+        </div>
+      )}
 
       {/* Middle Column: Chat Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-white relative shadow-[0_0_15px_rgba(0,0,0,0.02)] z-10">
@@ -397,7 +443,7 @@ export default function Home() {
             </div>
           ) : (
             <>
-              {messages.map((m) => (
+              {messages.filter(m => m.role !== "agent" || m.content).map((m) => (
                 <div
                   key={m.id}
                   className={`flex w-full ${m.role === "user" ? "justify-end" : "justify-start"}`}
@@ -416,10 +462,20 @@ export default function Home() {
                           ? "bg-gray-50 border border-gray-200 text-gray-500 rounded-bl-sm font-mono text-xs w-full sm:max-w-full italic flex items-center gap-3"
                           : "bg-white border border-gray-100 text-gray-800 rounded-bl-sm"}
                     `}
-                    style={{ whiteSpace: "pre-wrap" }}
+                    style={m.role === "user" ? { whiteSpace: "pre-wrap" } : undefined}
                   >
                     {m.isToolCall && <Command className="w-3.5 h-3.5 shrink-0" />}
-                    {m.isToolCall ? m.content : renderMessageContent(m.content)}
+
+                    {/* Render agent text with Markdown, everything else as plain text */}
+                    {m.role === "agent" && !m.isToolCall ? (
+                      <div className="markdown-content">
+                        <ReactMarkdown components={markdownComponents}>
+                          {m.content}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      m.content
+                    )}
 
                     {/* Tool message indicator strip */}
                     {m.isToolCall && (
@@ -510,10 +566,12 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Right Column: Matched Jobs */}
-      <div className="w-80 flex-shrink-0 border-l border-gray-200 bg-gray-50/10">
-        <JobsPanel jobs={jobs} onGenerateCoverLetter={handleGenerateCoverLetter} onGenerateCV={handleGenerateCV} />
-      </div>
+      {/* Right Column: Matched Jobs — slides in when jobs data arrives */}
+      {jobs.length > 0 && (
+        <div className="w-80 flex-shrink-0 border-l border-gray-200 bg-gray-50/10 slide-in-right">
+          <JobsPanel jobs={jobs} onGenerateCoverLetter={handleGenerateCoverLetter} />
+        </div>
+      )}
     </div>
   );
 }
