@@ -20,7 +20,7 @@ Next.js Frontend (page.tsx) ──/api/*──► next.config.ts rewrites ──
 
 ## Agent System — Mode-Switching Orchestrator
 
-`Orchestrator` in `backend/app/agents/orchestrator.py` uses Anthropic's raw `messages.create()` with manual tool dispatch (NOT the Agent SDK despite README). Modes are set **explicitly by API routes**, not by the AI:
+`Orchestrator` in `backend/app/agents/orchestrator.py` uses the Anthropic Agent SDK via `messages.create()` with tool_use dispatch. Modes are set **explicitly by API routes**, not by the AI:
 
 ```python
 AgentMode.STORY_COACH  → [parse_cv, update_profile_summary, search_jobs, get_job_details]
@@ -112,7 +112,6 @@ Env vars: create root `.env` with `ANTHROPIC_API_KEY` and `REED_API_KEY`. Loaded
 - **hooks.py unused**: Logging callbacks exist but are not wired into the orchestrator
 - **GBP-only**: Reed API is UK-only; dates parsed via `dd/mm/yyyy` → `datetime` in `JobListing`
 - **Alias inconsistency**: Agent tools serialize jobs as camelCase (`by_alias=True`), but REST routes in `jobs.py` serialize as snake_case (no `by_alias`). Frontend expects camelCase.
-- **README is aspirational**: Describes Agent SDK subagents, WebSocket, multi-page routing — the actual implementation uses raw Anthropic API, SSE only, single-page frontend
 - **LaTeX requires `pdflatex`**: The `generate_cv_latex` tool shells out to `pdflatex` (must be on PATH). It runs twice for cross-references.
 - **`DeliveryPanel` component**: Exists in `frontend/src/components/` but is not imported or used yet (future loading-state UI)
 - **`frontend/src/components/documents/`**: Empty directory scaffolded for future document preview components
