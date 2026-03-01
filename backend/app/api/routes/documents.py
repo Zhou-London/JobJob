@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.agents.orchestrator import AgentMode
+from app.config import settings
 from app.services.session_manager import session_manager
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -41,17 +42,53 @@ async def generate_documents(req: GenerateDocsRequest):
         f"profile for this specific role and generate both documents."
     )
 
+    output_dir = settings.output_dir
+    before = {
+        f.name
+        for f in output_dir.iterdir()
+        if f.is_file() and f.suffix.lower() in (".pdf", ".docx")
+    }
+
     response = await session.orchestrator.chat_simple(prompt)
 
-    return {"session_id": session.id, "message": response}
+    after_files = [
+        f
+        for f in output_dir.iterdir()
+        if f.is_file() and f.suffix.lower() in (".pdf", ".docx")
+    ]
+    after = {f.name for f in after_files}
+    new_files = sorted(after - before)
+
+    if not new_files:
+        excerpt = response.replace("\n", " ").strip()
+        if len(excerpt) > 240:
+            excerpt = f"{excerpt[:240]}..."
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Document generation completed but no files were created. "
+                f"Agent response: {excerpt}"
+            ),
+        )
+
+    docs = []
+    for f in after_files:
+        if f.name in new_files:
+            docs.append(
+                {
+                    "filename": f.name,
+                    "size_bytes": f.stat().st_size,
+                    "type": f.suffix.lower().lstrip("."),
+                    "download_url": f"/api/documents/{f.name}/download",
+                }
+            )
+
+    return {"session_id": session.id, "message": response, "documents": docs}
 
 
 @router.get("/{filename}/download")
 async def download_document(filename: str):
     """Download a generated document by filename."""
-    # Look in output directory
-    from app.config import settings
-
     file_path = settings.output_dir / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Document not found")
@@ -74,8 +111,6 @@ async def download_document(filename: str):
 @router.get("/list")
 async def list_documents():
     """List all generated documents."""
-    from app.config import settings
-
     output_dir = settings.output_dir
     if not output_dir.exists():
         return {"documents": []}

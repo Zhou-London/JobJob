@@ -30,6 +30,21 @@ class ChatMessageResponse(BaseModel):
     message: str
 
 
+class SessionCreateResponse(BaseModel):
+    session_id: str
+    created_at: str
+
+
+@router.post("/session", response_model=SessionCreateResponse)
+async def create_session():
+    """Create a new session and return its identifier."""
+    session = session_manager.create()
+    return SessionCreateResponse(
+        session_id=session.id,
+        created_at=session.created_at.isoformat(),
+    )
+
+
 @router.post("/message")
 async def send_message(req: ChatMessageRequest):
     """Send a message to the agent and stream back the response via SSE.
