@@ -135,7 +135,9 @@ async def tool_search_jobs(
         temp=temp,
         results_to_take=results_to_take,
     )
-    return json.dumps([j.model_dump(mode="json") for j in jobs], indent=2)
+    return json.dumps(
+        [j.model_dump(mode="json", by_alias=True) for j in jobs], indent=2
+    )
 
 
 async def tool_get_job_details(job_id: int) -> str:
@@ -148,4 +150,4 @@ async def tool_get_job_details(job_id: int) -> str:
         JSON string of the full job details.
     """
     job = await reed_client.get_job_details(job_id)
-    return job.model_dump_json(indent=2)
+    return job.model_dump_json(indent=2, by_alias=True)

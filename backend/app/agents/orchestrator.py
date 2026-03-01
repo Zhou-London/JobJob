@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 import anthropic
 
@@ -30,12 +30,16 @@ from app.tools.document_tools import (
     tool_generate_cv,
     tool_parse_cv,
 )
+from app.tools.profile_tools import tool_update_profile_summary
 from app.tools.reed_tools import tool_get_job_details, tool_search_jobs
+
+if TYPE_CHECKING:
+    from app.models.user_profile import UserProfile
 
 logger = logging.getLogger(__name__)
 
-# Map tool names → handler functions
-TOOL_HANDLERS: dict[str, Any] = {
+# Map tool names → handler functions (stateless defaults)
+_DEFAULT_TOOL_HANDLERS: dict[str, Any] = {
     "search_jobs": tool_search_jobs,
     "get_job_details": tool_get_job_details,
     "parse_cv": tool_parse_cv,
@@ -84,11 +88,21 @@ class Orchestrator:
     until the agent produces a final text response.
     """
 
-    def __init__(self, mode: str = AgentMode.STORY_COACH) -> None:
+    def __init__(
+        self,
+        mode: str = AgentMode.STORY_COACH,
+        profile: "UserProfile | None" = None,
+    ) -> None:
         self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         self.mode = mode
         self.messages: list[dict[str, Any]] = []
         self.profile_json: str | None = None  # latest serialised UserProfile
+        self.profile: UserProfile | None = profile  # type: ignore[assignment]
+
+        # Instance-level handler map so session-aware tools can be registered
+        self.tool_handlers: dict[str, Any] = dict(_DEFAULT_TOOL_HANDLERS)
+        if self.profile is not None:
+            self._register_profile_tools()
 
     @property
     def _config(self) -> dict[str, Any]:
@@ -99,6 +113,19 @@ class Orchestrator:
         if mode not in MODE_CONFIG:
             raise ValueError(f"Unknown mode: {mode}")
         self.mode = mode
+
+    # ------------------------------------------------------------------
+    # Session-aware tool registration
+    # ------------------------------------------------------------------
+
+    def _register_profile_tools(self) -> None:
+        """Register tools that need access to the session's UserProfile."""
+        profile = self.profile
+
+        async def _handle_update_profile_summary(**kwargs: Any) -> str:
+            return await tool_update_profile_summary(**kwargs, profile=profile)  # type: ignore[arg-type]
+
+        self.tool_handlers["update_profile_summary"] = _handle_update_profile_summary
 
     async def chat(self, user_message: str) -> AsyncIterator[dict[str, Any]]:
         """Send a user message and yield events from the agent loop.
@@ -171,7 +198,7 @@ class Orchestrator:
             # Execute tool calls and add results
             tool_results: list[dict[str, Any]] = []
             for tool_call in tool_uses:
-                handler = TOOL_HANDLERS.get(tool_call["name"])
+                handler = self.tool_handlers.get(tool_call["name"])
                 if handler is None:
                     result = json.dumps({"error": f"Unknown tool: {tool_call['name']}"})
                 else:
