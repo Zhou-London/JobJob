@@ -81,7 +81,11 @@ class ReedClient:
                 domain=".reed.co.uk",
                 path="/",
             )
-        return {"ok": True, "message": "Configured cookies applied.", "added": len(cookies)}
+        return {
+            "ok": True,
+            "message": "Configured cookies applied.",
+            "added": len(cookies),
+        }
 
     @staticmethod
     def _extract_hidden_inputs(html: str) -> dict[str, str]:
@@ -242,7 +246,10 @@ class ReedClient:
             """Save a login screenshot for diagnostics."""
             try:
                 settings.output_dir.mkdir(parents=True, exist_ok=True)
-                path = Path(settings.output_dir) / f"reed_login_{label}_{uuid.uuid4().hex[:8]}.png"
+                path = (
+                    Path(settings.output_dir)
+                    / f"reed_login_{label}_{uuid.uuid4().hex[:8]}.png"
+                )
                 driver.save_screenshot(str(path))
                 return str(path)
             except Exception:
@@ -316,9 +323,10 @@ class ReedClient:
                 login_url = f"{self.web_base_url}/account/signin"
                 driver.get(login_url)
 
-                if "请稍候" in (driver.title or "") or "just a moment" in (
-                    driver.title or ""
-                ).lower():
+                if (
+                    "请稍候" in (driver.title or "")
+                    or "just a moment" in (driver.title or "").lower()
+                ):
                     screenshot_path = _save_screenshot(driver, "challenge")
                     return {
                         "ok": False,
@@ -331,13 +339,15 @@ class ReedClient:
                     }
 
                 wait.until(
-                    lambda d: len(
-                        d.find_elements(
-                            By.CSS_SELECTOR,
-                            "#signin_email, input[type='email'], input[name='email']",
+                    lambda d: (
+                        len(
+                            d.find_elements(
+                                By.CSS_SELECTOR,
+                                "#signin_email, input[type='email'], input[name='email']",
+                            )
                         )
+                        > 0
                     )
-                    > 0
                 )
 
                 email_input = _find_visible(
@@ -423,14 +433,19 @@ class ReedClient:
                     or bool(auth_error)
                 )
                 logged_in = not has_invalid_credentials and (
-                    ("signin" not in final_url.lower() and "login" not in final_url.lower())
+                    (
+                        "signin" not in final_url.lower()
+                        and "login" not in final_url.lower()
+                    )
                     or "sign out" in body
                     or "logout" in body
                     or "my account" in body
                 )
 
                 cookies = driver.get_cookies() or []
-                screenshot_path = None if logged_in else _save_screenshot(driver, "failed")
+                screenshot_path = (
+                    None if logged_in else _save_screenshot(driver, "failed")
+                )
                 return {
                     "ok": bool(logged_in),
                     "url": final_url,
@@ -523,9 +538,7 @@ class ReedClient:
         # If caller did not provide Cookie, reuse any configured/login cookies.
         if "Cookie" not in headers:
             web_client = await self._get_web_client()
-            cookie_header = "; ".join(
-                f"{k}={v}" for k, v in web_client.cookies.items()
-            )
+            cookie_header = "; ".join(f"{k}={v}" for k, v in web_client.cookies.items())
             if cookie_header:
                 headers["Cookie"] = cookie_header
 
@@ -556,19 +569,18 @@ class ReedClient:
 
         application_id = None
         if response_body:
-            application_id = (
-                response_body.get("result", {}) or {}
-            ).get("applicationId")
+            application_id = (response_body.get("result", {}) or {}).get(
+                "applicationId"
+            )
 
-        ok = (
-            200 <= submit_resp.status_code < 300
-            and application_id is not None
-        )
+        ok = 200 <= submit_resp.status_code < 300 and application_id is not None
 
         error_codes: list[str] = []
         if response_body:
             errors = response_body.get("errors") or {}
-            parsed_codes = errors.get("errorCodes") if isinstance(errors, dict) else None
+            parsed_codes = (
+                errors.get("errorCodes") if isinstance(errors, dict) else None
+            )
             if isinstance(parsed_codes, list):
                 error_codes = [str(code) for code in parsed_codes]
 
@@ -645,7 +657,9 @@ async def tool_search_jobs(
         easy_apply=easy_apply_only if easy_apply_only else None,
         results_to_take=results_to_take,
     )
-    return json.dumps([j.model_dump(mode="json") for j in jobs], indent=2)
+    return json.dumps(
+        [j.model_dump(mode="json", by_alias=True) for j in jobs], indent=2
+    )
 
 
 async def tool_get_job_details(job_id: int) -> str:
@@ -658,7 +672,7 @@ async def tool_get_job_details(job_id: int) -> str:
         JSON string of the full job details.
     """
     job = await reed_client.get_job_details(job_id)
-    return job.model_dump_json(indent=2)
+    return job.model_dump_json(indent=2, by_alias=True)
 
 
 async def tool_reed_login(

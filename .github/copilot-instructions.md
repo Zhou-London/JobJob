@@ -1,33 +1,37 @@
 # Copilot Instructions — JobJob
 
-> AI-powered job application agent: Python/FastAPI backend + Next.js frontend. Interviews users, searches Reed API for jobs, generates tailored CVs/cover letters, and auto-applies via browser automation.
+> AI-powered job application agent: Python/FastAPI backend + Next.js frontend. Conducts a career-story interview, searches Reed API for jobs, generates tailored CVs/cover letters, and (planned) auto-applies via browser automation.
 
 ## Architecture
 
 ```
-Next.js Frontend (SSE/REST) → FastAPI Backend → Anthropic Messages API (tool_use loop)
-                                     ↓
-                          ┌──────────┼──────────┐
-                          ▼          ▼          ▼
-                     Reed API    File I/O   Playwright MCP
+Next.js Frontend (page.tsx) ──/api/*──► next.config.ts rewrites ──► FastAPI Backend :8000
+                                                                          │
+                                              Anthropic Messages API (tool_use loop)
+                                                          │
+                                               ┌──────────┼──────────┐
+                                               ▼          ▼          ▼
+                                          Reed API    File I/O   Playwright (stub)
 ```
 
-- **Backend** (`backend/`): Python 3.12+, FastAPI, `uv` for deps. No database — all state in-memory.
-- **Frontend** (`frontend/`): Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, shadcn/ui.
-- **Communication**: SSE for chat streaming, REST for CRUD. Frontend proxies `/api/*` → `localhost:8000` via `next.config.ts` rewrites.
+- **Backend** (`backend/`): Python 3.12+, FastAPI, `uv` for deps. No database — all state in-memory via `SessionManager` (24h TTL, UUID sessions, no auth).
+- **Frontend** (`frontend/`): Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4. Single-page chat UI in `page.tsx` — no routing.
+- **Communication**: Frontend proxies `/api/*` to backend via `next.config.ts` rewrites. Backend streams responses via SSE (`sse-starlette`). Frontend parses SSE events to update chat, profile sidebar (`InfoPanel`), and jobs sidebar (`JobsPanel`) in real-time.
 
 ## Agent System — Mode-Switching Orchestrator
 
-A single `Orchestrator` class in `backend/app/agents/orchestrator.py` manages conversation via Anthropic's raw `messages.create()` API with manual tool dispatch — NOT the high-level Agent SDK. Modes are set **explicitly by API routes**, not by the AI:
+`Orchestrator` in `backend/app/agents/orchestrator.py` uses Anthropic's raw `messages.create()` with manual tool dispatch (NOT the Agent SDK despite README). Modes are set **explicitly by API routes**, not by the AI:
 
 ```python
-AgentMode.STORY_COACH  → STORY_COACH_SYSTEM_PROMPT + [parse_cv]
-AgentMode.JOB_MATCHER  → JOB_MATCHER_SYSTEM_PROMPT + [search_jobs, get_job_details]
-AgentMode.CV_WRITER    → CV_WRITER_SYSTEM_PROMPT   + [generate_cv, generate_cover_letter]
-AgentMode.ORCHESTRATOR → ORCHESTRATOR_SYSTEM_PROMPT + ALL_TOOLS
+AgentMode.STORY_COACH  → [parse_cv, update_profile_summary, search_jobs, get_job_details]
+AgentMode.JOB_MATCHER  → [search_jobs, get_job_details]
+AgentMode.CV_WRITER    → [generate_cv, generate_cover_letter]  # uses settings.writing_model
+AgentMode.ORCHESTRATOR → ALL_TOOLS
 ```
 
-Data flow: `API Route → session_manager.get_or_create(id) → orchestrator.set_mode() → orchestrator.chat() → yields events → SSE`
+Data flow: `POST /api/chat/message → session_manager.get_or_create(id) → orchestrator.set_mode() → orchestrator.chat() → yields event dicts → agent_events_to_sse() → SSE stream`
+
+**Session-aware tools**: `tool_update_profile_summary` needs access to the session's `UserProfile`. It's registered via a closure in `Orchestrator._register_profile_tools()` — this is the pattern for any tool that needs session state.
 
 ## Dev Commands
 
@@ -42,52 +46,51 @@ cd frontend && npm install && npm run dev   # port 3000
 cd backend && uv run ruff check .
 ```
 
+Env vars: create root `.env` with `ANTHROPIC_API_KEY` and `REED_API_KEY`. Loaded by `backend/app/config.py` via pydantic-settings (`env_file = "../.env"`). Both models default to `claude-sonnet-4-20250514` (`default_model` and `writing_model`).
+
 ## Backend Conventions
 
 - `from __future__ import annotations` at top of every module
 - Absolute imports only: `from app.config import settings`, never relative
-- **Tool functions** prefixed `tool_`: `tool_search_jobs()`, `tool_generate_cv()`
-- **Tool definitions** are JSON Schema dicts in `definitions.py` AND Python functions in `tools/` — keep in sync manually
-- Pydantic v2: `Field(description=...)`, `model_dump(mode="json")`, `model_validate_json()`
-- FastAPI routes: each file creates `router = APIRouter(prefix="/api/xxx", tags=["xxx"])`, registered in `main.py`
-- Request bodies defined as inline Pydantic models in route files
-- Singletons at module level: `session_manager`, `reed_client`, `settings`
-- SSE via `sse-starlette`. Event types: `text`, `tool_call`, `tool_result`, `done`, `error`, `session`
+- **Tool functions** prefixed `tool_`: `tool_search_jobs()`, `tool_generate_cv()` — defined in `backend/app/tools/`, must return JSON strings
+- **Tool definitions**: JSON Schema dicts (`TOOL_SEARCH_JOBS`, etc.) in `backend/app/agents/definitions.py` — kept manually in sync with Python function signatures. No auto-generation.
+- **Tool handler map**: `_DEFAULT_TOOL_HANDLERS` dict in `orchestrator.py` maps tool name strings → async functions. Session-aware tools are added to `self.tool_handlers` per-instance.
+- Pydantic v2 models in `backend/app/models/`: use `Field(description=...)`, `model_dump(mode="json")`, `serialization_alias` for camelCase JSON output, `@field_validator`, and `@classmethod` factories like `JobListing.from_reed_search(data)`
+- FastAPI routes: each file creates `router = APIRouter(prefix="/api/xxx", tags=["xxx"])`, registered in `backend/app/main.py`
+- Request bodies: inline Pydantic `BaseModel` subclasses in route files (e.g. `ChatMessageRequest`, `ApplyRequest`)
+- Module-level singletons: `session_manager`, `reed_client`, `settings`
+- SSE event types: `text`, `tool_call`, `tool_result`, `done`, `error`, `session`
 
 ## Frontend Conventions
 
-- All interactive pages/components use `"use client"` directive; only root `layout.tsx` and landing `page.tsx` are server components
-- Path alias `@/` → `src/`: `import { Button } from "@/components/ui/button"`
-- Props interface named `ComponentNameProps`, defined above component
-- API client in `lib/api.ts`: `apiFetch<T>()` wrapper, SSE parsed manually via `ReadableStream`
-- Chat state via `useChat` hook — SSE events **overwrite** (not append) message content
-- Styling: Tailwind utilities + `cn()` (clsx + tailwind-merge), emojis as icons, shadcn/ui Cards as containers
+- Single-page app in `frontend/src/app/page.tsx` — three-panel layout: `InfoPanel` (left, profile), chat (center), `JobsPanel` (right, search results)
+- `"use client"` on `page.tsx`; only `layout.tsx` is a server component
+- Path alias `@/` → `src/`
+- Icons: `lucide-react` throughout (Send, Paperclip, Building2, etc.)
+- Styling: Tailwind v4 utilities + `cn()` from `lib/utils.ts` (clsx + tailwind-merge). Custom animations in `globals.css`
+- SSE parsing in `handleSend()`: reads `event:` / `data:` lines from the stream, dispatches by event type. `update_profile_summary` results update `InfoPanel`; `search_jobs` results populate `JobsPanel`.
+- `shadcn` is a dev dependency (CLI available) but no components generated yet
 
 ## Adding a New Tool
 
-1. Create async `tool_xxx()` in `backend/app/tools/` returning JSON string
+1. Create async `tool_xxx()` in `backend/app/tools/` returning a JSON string
 2. Add JSON Schema dict `TOOL_XXX` in `backend/app/agents/definitions.py`
-3. Add to appropriate tool group list (`STORY_COACH_TOOLS`, `JOB_MATCHER_TOOLS`, etc.)
-4. Register in `TOOL_HANDLERS` dict in `backend/app/agents/orchestrator.py`
+3. Add to the appropriate tool group list (`STORY_COACH_TOOLS`, `JOB_MATCHER_TOOLS`, etc.)
+4. Register in `_DEFAULT_TOOL_HANDLERS` dict in `orchestrator.py` (or in `_register_profile_tools()` if it needs session state)
+5. Import the handler function in `orchestrator.py`
+6. If the frontend should react to this tool's results, add handling in `page.tsx` under the `tool_result` SSE event case
 
 ## Adding a New API Route
 
 1. Create `backend/app/api/routes/new_route.py` with `router = APIRouter(prefix="/api/new", tags=["new"])`
-2. Register in `backend/app/main.py` via `app.include_router()`
-3. Add client functions + types in `frontend/src/lib/api.ts`
-
-## Adding a Frontend Component
-
-1. Create `PascalCase.tsx` in appropriate `frontend/src/components/` subdirectory
-2. Use `"use client"`, define `ComponentNameProps` interface, use shadcn primitives + `cn()`
+2. Register in `backend/app/main.py` via `app.include_router(router)`
 
 ## Non-Obvious Gotchas
 
-- **Auto-apply is a stub**: `applications.py` creates records but no Playwright integration yet
-- **Tool defs are duplicated**: JSON schemas in `definitions.py` must match Python signatures in `tools/`
-- **Session state split**: `Session` holds `Orchestrator` + `UserProfile`, but Story Coach doesn't auto-update profile
-- **Dual API paths**: Frontend uses proxy rewrites AND `api.ts` has hardcoded `API_BASE` URL
-- **No auth**: Sessions are anonymous UUID-based
-- **GBP-only**: Reed API is UK-only; salary formatting uses `en-GB` locale
-- **HTML injection**: Job detail page renders Reed HTML via `dangerouslySetInnerHTML` unsanitised
-- **Env vars**: Loaded from root `.env` by `backend/app/config.py` via pydantic-settings; required: `ANTHROPIC_API_KEY`, `REED_API_KEY`
+- **Auto-apply is a stub**: `applications.py` creates records but no Playwright automation is wired up
+- **Tool defs are manually duplicated**: JSON schemas in `definitions.py` must match Python signatures in `tools/` — no auto-generation, easy to drift
+- **Profile writes via tool only**: The Story Coach updates `session.profile` through the `update_profile_summary` tool (closure-injected). There's no other write path from the agent to the profile.
+- **hooks.py unused**: Logging callbacks exist but are not wired into the orchestrator
+- **GBP-only**: Reed API is UK-only; dates parsed via `dd/mm/yyyy` → `datetime` in `JobListing`
+- **CV generation uses WeasyPrint**: HTML template in `document_tools.py` → PDF, plus `python-docx` for DOCX output
+- **README is aspirational**: Describes Agent SDK subagents, WebSocket, multi-page routing — the actual implementation uses raw Anthropic API, SSE only, single-page frontend

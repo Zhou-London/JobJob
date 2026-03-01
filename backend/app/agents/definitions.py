@@ -60,6 +60,28 @@ Any metrics you can share?"
 4. **Synthesis** — Once you have enough information (typically after 4-6 \
 exchanges), summarise the profile back to the user for confirmation.
 
+## CRITICAL — Progressive Profile Updates
+
+After EVERY user message that reveals information about them, you MUST call \
+`update_profile_summary` to save what you know so far. This updates the \
+user's sidebar in real-time. Rules:
+- Include their **name** and **job_position** (desired role) as soon as you \
+learn them.
+- Include ALL known bullet points each time — this is a **full replace**, \
+not an append.
+- Bullet points should be concise (e.g. "5+ years Python/Django", \
+"Led team of 8 engineers", "Seeking remote roles in London area").
+- Call the tool even from the very first message if the user shares any \
+relevant info.
+
+## CRITICAL — Automatic Job Search
+
+Once you know the user's target role (and ideally their location preference), \
+proactively call `search_jobs` to find matching opportunities. You do NOT need \
+to wait for the user to ask. Choose the best keywords based on what you have \
+learned about their skills and desired role. If the first search returns few \
+results, try alternative keywords.
+
 ## Rules
 - Ask at most 2-3 questions per message to avoid overwhelming the user.
 - Be encouraging — celebrate achievements they mention.
@@ -101,6 +123,34 @@ CV_WRITER_SYSTEM_PROMPT = """\
 You are an **Expert CV and Cover Letter Writer** with deep knowledge of what \
 recruiters and ATS systems look for.
 
+## CV Generation — LaTeX Template
+
+You MUST generate CVs using the `generate_cv_latex` tool. You produce a \
+complete `.tex` file based on the LaTeX template. The template provides these \
+entry commands:
+
+- `\\educationentry{dates}{institution}{degree}{\\item bullet1 \\item bullet2}`
+- `\\experienceentry{location}{dates}{title}{company}{\\item bullet1 \\item bullet2}`
+- `\\projectentry{link-or-label}{title}{\\item bullet1 \\item bullet2}`
+- `\\techentry{category}{comma-separated items}`
+
+Separate entries within a section with `\\entrybreak`.
+
+### What you must provide to `generate_cv_latex`
+
+The `latex_body` parameter must be the **complete .tex file** — preamble \
+(with `\\newcommand` config values filled in from the user's profile) through \
+to `\\end{document}`. Copy the full template preamble (packages, environments, \
+command definitions) verbatim, only changing the `\\newcommand` config block at \
+the top to insert the user's name, email, phone, location, LinkedIn, and GitHub. \
+Then write the document body using the entry commands above.
+
+### LaTeX escaping
+
+Escape these characters in ALL content: `%` → `\\%`, `&` → `\\&`, \
+`#` → `\\#`, `$` → `\\$`, `_` → `\\_`, `~` → `\\textasciitilde`, \
+`^` → `\\textasciicircum`. Use `\\textbf{}` for bold.
+
 ## CV Tailoring Guidelines
 
 Given a user's profile and a target job listing:
@@ -131,7 +181,8 @@ requirements. Show don't tell.
 - Never fabricate experiences, skills, or achievements.
 - Only use information from the user's profile.
 - Tailor aggressively — a generic CV/cover letter is a failure.
-- After composing, call the document generation tools to create PDF/DOCX files.
+- Always use `generate_cv_latex` for CVs (not `generate_cv`).
+- After composing, call the document generation tools to create PDF files.
 """
 
 AUTO_APPLIER_SYSTEM_PROMPT = """\
@@ -341,10 +392,80 @@ TOOL_GENERATE_COVER_LETTER = {
     },
 }
 
+TOOL_GENERATE_CV_LATEX = {
+    "name": "generate_cv_latex",
+    "description": (
+        "Generate a professional CV as a PDF using a LaTeX template. The LLM must "
+        "provide the COMPLETE .tex file content — the full preamble (with "
+        "\\newcommand config values filled in) plus \\begin{document}...\\end{document} "
+        "body using the template's entry commands (\\educationentry, \\experienceentry, "
+        "\\projectentry, \\techentry). The tool compiles it with pdflatex and returns "
+        "a download URL for the PDF. Tailor bullet points to the target job."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "latex_body": {
+                "type": "string",
+                "description": (
+                    "The COMPLETE LaTeX source (.tex file) for the CV. Must include "
+                    "the full preamble with \\newcommand config values, all package "
+                    "imports, environment/command definitions, and the "
+                    "\\begin{document}...\\end{document} body using the template's "
+                    "entry commands."
+                ),
+            },
+        },
+        "required": ["latex_body"],
+    },
+}
+
+TOOL_UPDATE_PROFILE_SUMMARY = {
+    "name": "update_profile_summary",
+    "description": (
+        "Save or update the user's profile sidebar. Call this EVERY time you "
+        "learn something new about the user — their name, desired role, skills, "
+        "experience, or achievements. The sidebar updates in real-time so the "
+        "user sees their profile being built as they talk. Include ALL known "
+        "bullet points each time (not just new ones)."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "The user's full name, if known.",
+            },
+            "job_position": {
+                "type": "string",
+                "description": (
+                    "The user's target / desired job title "
+                    "(e.g. 'Senior Python Developer')."
+                ),
+            },
+            "summary_bullets": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Complete list of concise bullet-point strings summarising "
+                    "everything known so far about the user's skills, experience, "
+                    "achievements, and preferences. Always send the FULL list."
+                ),
+            },
+        },
+        "required": ["summary_bullets"],
+    },
+}
+
 # Grouped by agent role for convenience
-STORY_COACH_TOOLS = [TOOL_PARSE_CV]
+STORY_COACH_TOOLS = [
+    TOOL_PARSE_CV,
+    TOOL_UPDATE_PROFILE_SUMMARY,
+    TOOL_SEARCH_JOBS,
+    TOOL_GET_JOB_DETAILS,
+]
 JOB_MATCHER_TOOLS = [TOOL_SEARCH_JOBS, TOOL_GET_JOB_DETAILS]
-CV_WRITER_TOOLS = [TOOL_GENERATE_CV, TOOL_GENERATE_COVER_LETTER]
+CV_WRITER_TOOLS = [TOOL_GENERATE_CV, TOOL_GENERATE_CV_LATEX, TOOL_GENERATE_COVER_LETTER]
 # Auto-applier tools are Playwright MCP tools — not defined here
 
 ALL_TOOLS = [
@@ -354,5 +475,7 @@ ALL_TOOLS = [
     TOOL_APPLY_REED_JOB,
     TOOL_PARSE_CV,
     TOOL_GENERATE_CV,
+    TOOL_GENERATE_CV_LATEX,
     TOOL_GENERATE_COVER_LETTER,
+    TOOL_UPDATE_PROFILE_SUMMARY,
 ]

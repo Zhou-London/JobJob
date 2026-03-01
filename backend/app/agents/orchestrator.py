@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 
 import anthropic
 
@@ -28,8 +28,11 @@ from app.config import settings
 from app.tools.document_tools import (
     tool_generate_cover_letter,
     tool_generate_cv,
+    tool_generate_cv_latex,
     tool_parse_cv,
+    _get_template_text,
 )
+from app.tools.profile_tools import tool_update_profile_summary
 from app.tools.reed_tools import (
     tool_apply_reed_job,
     tool_get_job_details,
@@ -37,16 +40,20 @@ from app.tools.reed_tools import (
     tool_search_jobs,
 )
 
+if TYPE_CHECKING:
+    from app.models.user_profile import UserProfile
+
 logger = logging.getLogger(__name__)
 
-# Map tool names → handler functions
-TOOL_HANDLERS: dict[str, Any] = {
+# Map tool names → handler functions (stateless defaults)
+_DEFAULT_TOOL_HANDLERS: dict[str, Any] = {
     "search_jobs": tool_search_jobs,
     "get_job_details": tool_get_job_details,
     "reed_login": tool_reed_login,
     "apply_reed_job": tool_apply_reed_job,
     "parse_cv": tool_parse_cv,
     "generate_cv": tool_generate_cv,
+    "generate_cv_latex": tool_generate_cv_latex,
     "generate_cover_letter": tool_generate_cover_letter,
 }
 
@@ -91,21 +98,60 @@ class Orchestrator:
     until the agent produces a final text response.
     """
 
-    def __init__(self, mode: str = AgentMode.STORY_COACH) -> None:
+    def __init__(
+        self,
+        mode: str = AgentMode.STORY_COACH,
+        profile: "UserProfile | None" = None,
+    ) -> None:
         self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
         self.mode = mode
         self.messages: list[dict[str, Any]] = []
         self.profile_json: str | None = None  # latest serialised UserProfile
+        self.profile: UserProfile | None = profile  # type: ignore[assignment]
+
+        # Instance-level handler map so session-aware tools can be registered
+        self.tool_handlers: dict[str, Any] = dict(_DEFAULT_TOOL_HANDLERS)
+        if self.profile is not None:
+            self._register_profile_tools()
 
     @property
     def _config(self) -> dict[str, Any]:
-        return MODE_CONFIG[self.mode]
+        cfg = MODE_CONFIG[self.mode]
+        # Inject the LaTeX template into the system prompt for CV_WRITER mode
+        if self.mode == AgentMode.CV_WRITER:
+            try:
+                template_text = _get_template_text()
+                system_with_template = (
+                    cfg["system"] + "\n\n## LaTeX CV Template\n\n"
+                    "Below is the complete LaTeX template. Copy the preamble "
+                    "verbatim (everything from \\documentclass to just before "
+                    "\\begin{document}), fill in the \\newcommand config values "
+                    "with user data, then write the document body.\n\n"
+                    "```latex\n" + template_text + "\n```"
+                )
+                return {**cfg, "system": system_with_template}
+            except Exception:
+                pass
+        return cfg
 
     def set_mode(self, mode: str) -> None:
         """Switch agent mode (changes system prompt and available tools)."""
         if mode not in MODE_CONFIG:
             raise ValueError(f"Unknown mode: {mode}")
         self.mode = mode
+
+    # ------------------------------------------------------------------
+    # Session-aware tool registration
+    # ------------------------------------------------------------------
+
+    def _register_profile_tools(self) -> None:
+        """Register tools that need access to the session's UserProfile."""
+        profile = self.profile
+
+        async def _handle_update_profile_summary(**kwargs: Any) -> str:
+            return await tool_update_profile_summary(**kwargs, profile=profile)  # type: ignore[arg-type]
+
+        self.tool_handlers["update_profile_summary"] = _handle_update_profile_summary
 
     async def chat(self, user_message: str) -> AsyncIterator[dict[str, Any]]:
         """Send a user message and yield events from the agent loop.
@@ -122,9 +168,11 @@ class Orchestrator:
         max_iterations = 15  # safety limit for tool-use loops
         for _ in range(max_iterations):
             try:
+                # CV generation needs more tokens for the full LaTeX template
+                max_tok = 16384 if self.mode == AgentMode.CV_WRITER else 4096
                 response = await self.client.messages.create(
                     model=self._config["model"],
-                    max_tokens=4096,
+                    max_tokens=max_tok,
                     system=self._config["system"],
                     tools=self._config["tools"],
                     messages=self.messages,
@@ -169,6 +217,12 @@ class Orchestrator:
             # Add the assistant message to history
             self.messages.append({"role": "assistant", "content": assistant_content})
 
+            # If the response was truncated (max_tokens), warn and continue
+            if response.stop_reason == "max_tokens" and tool_uses:
+                logger.warning(
+                    "Response truncated by max_tokens — tool call input may be incomplete"
+                )
+
             # If no tool calls, we're done
             if not tool_uses:
                 final_text = "\n".join(text_parts)
@@ -178,12 +232,19 @@ class Orchestrator:
             # Execute tool calls and add results
             tool_results: list[dict[str, Any]] = []
             for tool_call in tool_uses:
-                handler = TOOL_HANDLERS.get(tool_call["name"])
+                handler = self.tool_handlers.get(tool_call["name"])
                 if handler is None:
                     result = json.dumps({"error": f"Unknown tool: {tool_call['name']}"})
                 else:
                     try:
-                        result = await handler(**tool_call["input"])
+                        tool_input = tool_call["input"]
+                        logger.info(
+                            "Calling tool %s with %d keys: %s",
+                            tool_call["name"],
+                            len(tool_input),
+                            list(tool_input.keys()),
+                        )
+                        result = await handler(**tool_input)
                     except Exception as e:
                         logger.exception(f"Tool {tool_call['name']} failed")
                         result = json.dumps({"error": str(e)})
