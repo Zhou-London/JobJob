@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import InfoPanel, { type UserProfile } from "@/components/InfoPanel";
 import JobsPanel, { type JobData } from "@/components/JobsPanel";
-import { Send, Paperclip, Mic, User as UserIcon, Bot, Loader2, FileText, Sparkles, Command } from "lucide-react";
+import { Send, Paperclip, Mic, User as UserIcon, Bot, Loader2, FileText, Sparkles, Command, Download } from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 
 const markdownComponents: Components = {
@@ -79,7 +79,7 @@ export default function Home() {
     }
   };
 
-  const handleSend = async (overrideText?: string) => {
+  const handleSend = async (overrideText?: string, mode?: string) => {
     const textToSend = overrideText || inputValue.trim();
     if (!textToSend) return;
 
@@ -95,7 +95,8 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: textToSend,
-          session_id: sessionId || undefined
+          session_id: sessionId || undefined,
+          mode: mode || undefined,
         }),
       });
 
@@ -196,6 +197,42 @@ export default function Home() {
                       } else if (resultObj.results && Array.isArray(resultObj.results)) {
                         setJobs(resultObj.results);
                         completedMsg = `Found ${resultObj.results.length} matched jobs.`;
+                      }
+                    } catch (e) { }
+                  }
+
+                  // Handle CV LaTeX generation result — show download link
+                  if (data.name === "generate_cv_latex" && data.result) {
+                    try {
+                      const resultObj = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+                      if (resultObj.download_url) {
+                        completedMsg = `CV generated successfully.`;
+                        // Add a special download message
+                        const downloadMsg: Message = {
+                          id: Date.now() + Math.random().toString(),
+                          role: "agent",
+                          content: `📄 Your tailored CV is ready! [Download PDF](${resultObj.download_url})`,
+                        };
+                        setMessages((prev) => [...prev, downloadMsg]);
+                      } else if (resultObj.error) {
+                        completedMsg = `CV generation failed: ${resultObj.error}`;
+                      }
+                    } catch (e) { }
+                  }
+
+                  // Handle cover letter generation result — show download link
+                  if (data.name === "generate_cover_letter" && data.result) {
+                    try {
+                      const resultObj = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+                      if (resultObj.pdf_path) {
+                        const filename = resultObj.pdf_path.split('/').pop();
+                        const downloadUrl = `/api/documents/${filename}/download`;
+                        const downloadMsg: Message = {
+                          id: Date.now() + Math.random().toString(),
+                          role: "agent",
+                          content: `📄 Your cover letter is ready! [Download PDF](${downloadUrl})`,
+                        };
+                        setMessages((prev) => [...prev, downloadMsg]);
                       }
                     } catch (e) { }
                   }
@@ -313,7 +350,43 @@ export default function Home() {
 
   const handleGenerateCoverLetter = (job: JobData) => {
     const prompt = `Please generate a tailored cover letter for the job: ${job.jobTitle} at ${job.employerName}. Job Id: ${job.jobId}`;
-    handleSend(prompt);
+    handleSend(prompt, "cv_writer");
+  };
+
+  const handleGenerateCV = (job: JobData) => {
+    const prompt = `Please generate a tailored CV (using the LaTeX template via generate_cv_latex) for the job: ${job.jobTitle} at ${job.employerName}. Job Id: ${job.jobId}`;
+    handleSend(prompt, "cv_writer");
+  };
+
+  /** Render message text, converting markdown-style [text](url) into clickable links. */
+  const renderMessageContent = (content: string) => {
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts: (string | React.ReactElement)[] = [];
+    let lastIndex = 0;
+    let match;
+    while ((match = linkRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(content.slice(lastIndex, match.index));
+      }
+      const [, text, url] = match;
+      parts.push(
+        <a
+          key={match.index}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium text-sm transition-colors no-underline border border-blue-200"
+        >
+          <Download className="w-3.5 h-3.5" />
+          {text}
+        </a>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < content.length) {
+      parts.push(content.slice(lastIndex));
+    }
+    return parts.length > 0 ? parts : content;
   };
 
   return (
@@ -496,7 +569,7 @@ export default function Home() {
       {/* Right Column: Matched Jobs — slides in when jobs data arrives */}
       {jobs.length > 0 && (
         <div className="w-80 flex-shrink-0 border-l border-gray-200 bg-gray-50/10 slide-in-right">
-          <JobsPanel jobs={jobs} onGenerateCoverLetter={handleGenerateCoverLetter} />
+          <JobsPanel jobs={jobs} onGenerateCoverLetter={handleGenerateCoverLetter} onGenerateCV={handleGenerateCV} />
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { Building2, MapPin, PoundSterling, ExternalLink, FileText, Briefcase } from "lucide-react";
+import { Building2, MapPin, PoundSterling, ExternalLink, FileText, Briefcase, FileDown } from "lucide-react";
 
 export interface JobData {
     jobId: number;
@@ -13,10 +13,12 @@ export interface JobData {
 
 export default function JobsPanel({
     jobs,
-    onGenerateCoverLetter
+    onGenerateCoverLetter,
+    onGenerateCV,
 }: {
     jobs: JobData[],
-    onGenerateCoverLetter: (job: JobData) => void
+    onGenerateCoverLetter: (job: JobData) => void,
+    onGenerateCV: (job: JobData) => void,
 }) {
     if (!jobs || jobs.length === 0) {
         return (
@@ -76,6 +78,13 @@ export default function JobsPanel({
                         </div>
 
                         <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col gap-2">
+                            <button
+                                onClick={() => onGenerateCV(job)}
+                                className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                            >
+                                <FileDown className="w-4 h-4" />
+                                Generate CV
+                            </button>
                             <button
                                 onClick={() => onGenerateCoverLetter(job)}
                                 className="w-full flex items-center justify-center gap-2 bg-black text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm"

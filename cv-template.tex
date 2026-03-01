@@ -1,0 +1,443 @@
+\documentclass[10pt, a4paper]{article}
+
+%=============================================================================
+% CV LATEX TEMPLATE
+%=============================================================================
+%
+% HOW TO USE THIS TEMPLATE
+% ========================
+% 1. Fill in the CONFIGURATION section below with personal details.
+% 2. Replace the example entries in the DOCUMENT BODY with real content.
+% 3. Add or remove sections as needed (Publications, Projects, etc.).
+% 4. Each section provides one commented-out example showing the syntax.
+% 5. Compile with pdflatex (or lualatex/xelatex).
+%
+% LLM INSTRUCTIONS
+% ================
+% When generating a CV from this template:
+% - Fill in ALL \newcommand values in the CONFIGURATION block.
+% - Use the provided entry commands: \educationentry, \experienceentry,
+%   \projectentry, \techentry. Their signatures are documented below.
+% - Separate multiple entries within a section with \entrybreak.
+% - Bold key metrics/technologies with \textbf{}.
+% - Escape special LaTeX characters: % → \%, & → \&, # → \#, $ → \$.
+% - For links use \href{URL}{display text}.
+% - Optional sections (Publications, Website) can be uncommented as needed.
+% - Keep bullet points concise, action-verb-led, and quantified where possible.
+%
+% ENTRY COMMAND SIGNATURES
+% ========================
+% \educationentry{dates}{institution}{degree}{bullet items}
+% \experienceentry{location}{dates}{title}{company}{bullet items}
+% \projectentry{link-or-label}{title}{bullet items}
+% \techentry{category}{comma-separated items}
+%
+%=============================================================================
+
+%=============================================================================
+% CONFIGURATION — Edit these values to customize your CV
+%=============================================================================
+% Personal information
+\newcommand{\myname}{Your Full Name}
+\newcommand{\mylocation}{City, Country}
+\newcommand{\myemail}{your.email@example.com}
+\newcommand{\myphone}{+1 234 567 890}
+\newcommand{\mylinkedin}{https://www.linkedin.com/in/your-profile/}
+\newcommand{\mylinkedinname}{Your Name}
+\newcommand{\mygithub}{https://github.com/your-username}
+\newcommand{\mygithubname}{your-username}
+
+% Optional: personal website (uncomment the website block in HEADER to use)
+% \newcommand{\mywebsite}{https://yourwebsite.com}
+% \newcommand{\mywebsitename}{yourwebsite.com}
+
+% Metadata
+\newcommand{\lastupdated}{January 2026}
+
+%=============================================================================
+% PACKAGES
+%=============================================================================
+% Page layout
+\usepackage[
+    ignoreheadfoot,
+    top=2cm, bottom=2cm, left=2cm, right=2cm,
+    footskip=1.0cm,
+    % showframe % uncomment for debugging
+]{geometry}
+
+% Typography and formatting
+\usepackage{titlesec}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{needspace}
+
+% Colors
+\usepackage[dvipsnames]{xcolor}
+\definecolor{primaryColor}{RGB}{0, 79, 144}
+
+% Icons
+\usepackage{fontawesome5}
+
+% Links and PDF metadata
+\usepackage[
+    pdftitle={\myname\ — CV},
+    pdfauthor={\myname},
+    pdfcreator={LaTeX CV Template},
+    colorlinks=true,
+    urlcolor=primaryColor
+]{hyperref}
+\usepackage{bookmark}
+
+% Layout helpers
+\usepackage[pscoord]{eso-pic}
+\usepackage{calc}
+\usepackage{lastpage}
+\usepackage{changepage}
+\usepackage{paracol}
+\usepackage{ifthen}
+\usepackage{iftex}
+
+%=============================================================================
+% PDF/A COMPATIBILITY
+%=============================================================================
+\ifPDFTeX
+    \input{glyphtounicode}
+    \pdfgentounicode=1
+    \usepackage[utf8]{inputenc}
+    \usepackage{lmodern}
+\fi
+
+%=============================================================================
+% SPACING CONSTANTS — Adjust these to change spacing throughout
+%=============================================================================
+\newlength{\entryspacing}
+\setlength{\entryspacing}{0.2cm}
+
+\newlength{\highlightspacing}
+\setlength{\highlightspacing}{0.10cm}
+
+\newlength{\sectiontopspacing}
+\setlength{\sectiontopspacing}{0.3cm}
+
+\newlength{\sectionbottomspacing}
+\setlength{\sectionbottomspacing}{0.2cm}
+
+%=============================================================================
+% PAGE SETTINGS
+%=============================================================================
+\AtBeginEnvironment{adjustwidth}{\partopsep0pt}
+\pagestyle{empty}
+\setcounter{secnumdepth}{0}
+\setlength{\parindent}{0pt}
+\setlength{\topskip}{0pt}
+\setlength{\columnsep}{0cm}
+
+% Custom footer
+\makeatletter
+\let\ps@customFooterStyle\ps@plain
+\patchcmd{\ps@customFooterStyle}{\thepage}{
+    \color{gray}\textit{\small \myname\ — Page \thepage{} of \pageref*{LastPage}}
+}{}{} 
+\makeatother
+\pagestyle{customFooterStyle}
+
+%=============================================================================
+% SECTION FORMATTING
+%=============================================================================
+\titleformat{\section}{\needspace{4\baselineskip}\bfseries\large}{}{0pt}{}[\vspace{1pt}\titlerule]
+\titlespacing{\section}{-1pt}{\sectiontopspacing}{\sectionbottomspacing}
+
+\renewcommand\labelitemi{$\circ$}
+
+%=============================================================================
+% CUSTOM ENVIRONMENTS — Do not modify unless changing layout
+%=============================================================================
+
+% Highlights (bullet points)
+\newenvironment{highlights}{
+    \begin{itemize}[
+        topsep=\highlightspacing,
+        parsep=\highlightspacing,
+        partopsep=0pt,
+        itemsep=0pt,
+        leftmargin=0.4cm + 10pt
+    ]
+}{
+    \end{itemize}
+}
+
+\newenvironment{highlightsforbulletentries}{
+    \begin{itemize}[
+        topsep=\highlightspacing,
+        parsep=\highlightspacing,
+        partopsep=0pt,
+        itemsep=0pt,
+        leftmargin=10pt
+    ]
+}{
+    \end{itemize}
+}
+
+% One column entry
+\newenvironment{onecolentry}{
+    \begin{adjustwidth}{0.2cm + 0.00001cm}{0.2cm + 0.00001cm}
+}{
+    \end{adjustwidth}
+}
+
+% Two column entry
+\newenvironment{twocolentry}[2][]{
+    \onecolentry
+    \def\secondColumn{#2}
+    \setcolumnwidth{\fill, 4.5cm}
+    \begin{paracol}{2}
+}{
+    \switchcolumn \raggedleft \secondColumn
+    \end{paracol}
+    \endonecolentry
+}
+
+% Header environment
+\newenvironment{header}{
+    \setlength{\topsep}{0pt}\par\kern\topsep\centering\linespread{1.5}
+}{
+    \par\kern\topsep
+}
+
+%=============================================================================
+% CUSTOM COMMANDS — Do not modify unless changing layout
+%=============================================================================
+
+% Entry spacing command
+\newcommand{\entrybreak}{\vspace{\entryspacing}}
+
+% Last updated text
+\newcommand{\placelastupdatedtext}{
+    \AddToShipoutPictureFG*{
+        \put(
+            \LenToUnit{\paperwidth-2cm-0.2cm+0.05cm},
+            \LenToUnit{\paperheight-1.0cm}
+        ){\vtop{{\null}\makebox[0pt][c]{
+            \small\color{gray}\textit{Last updated in \lastupdated}\hspace{\widthof{Last updated in August 2025}}
+        }}}
+    }
+}
+
+% Save original href
+\let\hrefWithoutArrow\href
+
+% External link with arrow icon
+\renewcommand{\href}[2]{\hrefWithoutArrow{#1}{\ifthenelse{\equal{#2}{}}{ }{#2 }\raisebox{.15ex}{\footnotesize \faExternalLink*}}}
+
+%=============================================================================
+% CV ENTRY COMMANDS — Use these to create consistent entries
+%=============================================================================
+
+% Education entry: \educationentry{dates}{institution}{degree}{highlights}
+\newcommand{\educationentry}[4]{
+    \begin{twocolentry}{\textit{#1}}
+        \textbf{#2}
+        
+        \textit{#3}
+    \end{twocolentry}
+    \vspace{\highlightspacing}
+    \begin{onecolentry}
+        \begin{highlights}
+            #4
+        \end{highlights}
+    \end{onecolentry}
+}
+
+% Experience entry: \experienceentry{location}{dates}{title}{company}{highlights}
+\newcommand{\experienceentry}[5]{
+    \begin{twocolentry}{
+        \textit{#1}
+        
+        \textit{#2}
+    }
+        \textbf{#3}
+        
+        \textit{#4}
+    \end{twocolentry}
+    \vspace{\highlightspacing}
+    \begin{onecolentry}
+        \begin{highlights}
+            #5
+        \end{highlights}
+    \end{onecolentry}
+}
+
+% Project entry: \projectentry{link-or-label}{title}{highlights}
+\newcommand{\projectentry}[3]{
+    \begin{twocolentry}{\textit{#1}}
+        \textbf{#2}
+    \end{twocolentry}
+    \vspace{\highlightspacing}
+    \begin{onecolentry}
+        \begin{highlights}
+            #3
+        \end{highlights}
+    \end{onecolentry}
+}
+
+% Technology entry: \techentry{category}{items}
+\newcommand{\techentry}[2]{
+    \begin{onecolentry}
+        \textbf{#1:} #2
+    \end{onecolentry}
+}
+
+
+%=============================================================================
+%=============================================================================
+%
+%  ██████   ██████   ██████ ██    ██ ███    ███ ███████ ███    ██ ████████
+%  ██   ██ ██    ██ ██      ██    ██ ████  ████ ██      ████   ██    ██
+%  ██   ██ ██    ██ ██      ██    ██ ██ ████ ██ █████   ██ ██  ██    ██
+%  ██   ██ ██    ██ ██      ██    ██ ██  ██  ██ ██      ██  ██ ██    ██
+%  ██████   ██████   ██████  ██████  ██      ██ ███████ ██   ████    ██
+%
+%  Replace the example entries below with your own content.
+%  Each section shows one example entry; duplicate and modify as needed.
+%
+%=============================================================================
+%=============================================================================
+\begin{document}
+
+% Header separator setup (internal — do not modify)
+\newcommand{\AND}{\unskip\cleaders\copy\ANDbox\hskip\wd\ANDbox\ignorespaces}
+\newsavebox\ANDbox
+\sbox\ANDbox{}
+
+%-----------------------------------------------------------------------------
+% HEADER — Contact info is pulled from CONFIGURATION above
+%-----------------------------------------------------------------------------
+\placelastupdatedtext
+\begin{header}
+    \textbf{\fontsize{24pt}{24pt}\selectfont \myname}
+    
+    \vspace{0.3cm}
+    
+    \normalsize
+    % Location
+    \mbox{{\color{black}\footnotesize\faMapMarker*}\hspace*{0.13cm}\mylocation}%
+    \kern 0.25cm\AND\kern 0.25cm%
+    % Email
+    \mbox{\hrefWithoutArrow{mailto:\myemail}{\color{black}{\footnotesize\faEnvelope[regular]}\hspace*{0.13cm}\myemail}}%
+    \kern 0.25cm\AND\kern 0.25cm%
+    % Phone
+    \mbox{\hrefWithoutArrow{tel:\myphone}{\color{black}{\footnotesize\faPhone*}\hspace*{0.13cm}\myphone}}%
+    \kern 0.25cm\AND\kern 0.25cm%
+    % Website (uncomment the two lines below and add \mywebsite / \mywebsitename commands to CONFIGURATION)
+    %\mbox{\hrefWithoutArrow{\mywebsite}{\color{black}{\footnotesize\faLink}\hspace*{0.13cm}\mywebsitename}}%
+    %\kern 0.25cm\AND\kern 0.25cm%
+    % LinkedIn
+    \mbox{\hrefWithoutArrow{\mylinkedin}{\color{black}{\footnotesize\faLinkedinIn}\hspace*{0.13cm}\mylinkedinname}}%
+    \kern 0.25cm\AND\kern 0.25cm%
+    % GitHub
+    \mbox{\hrefWithoutArrow{\mygithub}{\color{black}{\footnotesize\faGithub}\hspace*{0.13cm}\mygithubname}}%
+\end{header}
+
+%-----------------------------------------------------------------------------
+% EDUCATION
+% Syntax: \educationentry{dates}{institution}{degree}{bullet items}
+% Use \entrybreak between entries.
+%-----------------------------------------------------------------------------
+\section{Education}
+
+% --- Example education entry (replace with your own) ---
+\educationentry{Sept 2022 – Jun 2026}
+    {University Name}
+    {BSc Your Degree}
+    {
+        \item Notable achievement or grade
+        \item Another highlight
+    }
+
+% \entrybreak
+%
+% \educationentry{Sept 2020 – Jun 2022}
+%     {Another Institution}
+%     {Previous Qualification}
+%     {
+%         \item Achievement or detail
+%     }
+
+%-----------------------------------------------------------------------------
+% EXPERIENCE
+% Syntax: \experienceentry{location}{dates}{title}{company}{bullet items}
+% Use \entrybreak between entries.
+%-----------------------------------------------------------------------------
+\section{Experience}
+
+% --- Example experience entry (replace with your own) ---
+\experienceentry{City, Country}{Jun 2025 – Sep 2025}
+    {Job Title}
+    {Company Name}
+    {
+        \item Describe what you built or achieved with quantified impact
+        \item Mention key technologies with \textbf{bold}: e.g.\ \textbf{Python}, \textbf{Docker}
+        \item Include metrics where possible: improved X by \textbf{30\%}
+    }
+
+% \entrybreak
+%
+% \experienceentry{City, Country}{Jan 2024 – May 2024}
+%     {Another Role}
+%     {Another Company}
+%     {
+%         \item Bullet point describing responsibilities and impact
+%     }
+
+%-----------------------------------------------------------------------------
+% PUBLICATIONS (optional — uncomment if needed)
+% Uses \section*{} (unnumbered) to exclude from numbering.
+%-----------------------------------------------------------------------------
+% \section*{Publications}
+%
+% \begin{itemize}
+%     \item Author Name, ``Paper Title,'' \textit{Journal/Conference}, Year.
+% \end{itemize}
+
+%-----------------------------------------------------------------------------
+% TECHNOLOGIES
+% Syntax: \techentry{category}{comma-separated items}
+% Use \entrybreak between entries.
+%-----------------------------------------------------------------------------
+\section{Technologies}
+
+\techentry{Languages}{Language1, Language2, Language3}
+
+\entrybreak
+
+\techentry{Frameworks \& Tools}{Tool1, Tool2, Tool3}
+
+%-----------------------------------------------------------------------------
+% PROJECTS
+% Syntax: \projectentry{link-or-label}{title}{bullet items}
+%   - link-or-label: use \href{URL}{display text} for a link,
+%     or plain text like "Work in Progress", "Course project", etc.
+% Use \entrybreak between entries.
+%-----------------------------------------------------------------------------
+\section{Projects}
+
+% --- Example project entry (replace with your own) ---
+\projectentry{\href{https://github.com/your-username/project}{Git repository}}
+    {Project Name}
+    {
+        \item One-sentence description of what the project does and why
+        \item Tools used: Technology1, Technology2, Technology3
+    }
+
+% \entrybreak
+%
+% \projectentry{Course project}
+%     {Another Project}
+%     {
+%         \item Description of the project
+%         \item Tools used: X, Y, Z
+%     }
+
+\end{document}
