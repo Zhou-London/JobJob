@@ -19,8 +19,8 @@ class Session:
 
     def __init__(self, session_id: str | None = None) -> None:
         self.id = session_id or str(uuid.uuid4())
-        self.orchestrator = Orchestrator(mode=AgentMode.STORY_COACH)
         self.profile: UserProfile = UserProfile()
+        self.orchestrator = Orchestrator(mode=AgentMode.STORY_COACH, profile=self.profile)
         self.created_at = datetime.utcnow()
         self.last_active = datetime.utcnow()
 

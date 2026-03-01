@@ -294,8 +294,32 @@ TOOL_GENERATE_COVER_LETTER = {
     },
 }
 
+TOOL_UPDATE_PROFILE_SUMMARY = {
+    "name": "update_profile_summary",
+    "description": (
+        "Save summarised profile bullet points into the user's session profile. "
+        "Call this after you have synthesised the user's career story into "
+        "concise bullet points (e.g. '5+ years Python/Django', "
+        "'Led team of 8 engineers'). The bullets are displayed in the sidebar."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "summary_bullets": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "List of concise bullet-point strings summarising the "
+                    "user's key skills, experience, and preferences."
+                ),
+            },
+        },
+        "required": ["summary_bullets"],
+    },
+}
+
 # Grouped by agent role for convenience
-STORY_COACH_TOOLS = [TOOL_PARSE_CV]
+STORY_COACH_TOOLS = [TOOL_PARSE_CV, TOOL_UPDATE_PROFILE_SUMMARY]
 JOB_MATCHER_TOOLS = [TOOL_SEARCH_JOBS, TOOL_GET_JOB_DETAILS]
 CV_WRITER_TOOLS = [TOOL_GENERATE_CV, TOOL_GENERATE_COVER_LETTER]
 # Auto-applier tools are Playwright MCP tools — not defined here
@@ -306,4 +330,5 @@ ALL_TOOLS = [
     TOOL_PARSE_CV,
     TOOL_GENERATE_CV,
     TOOL_GENERATE_COVER_LETTER,
+    TOOL_UPDATE_PROFILE_SUMMARY,
 ]
