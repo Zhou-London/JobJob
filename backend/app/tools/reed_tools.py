@@ -11,7 +11,7 @@ import json
 import re
 import uuid
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 from typing import Any, Optional
 
 import httpx
@@ -497,17 +497,13 @@ class ReedClient:
     ) -> dict[str, Any]:
         """Apply to a job by Reed job ID using the logged-in web session.
 
-        This performs a best-effort form submission:
-        - fetch job details via Reed API
-        - open Reed job listing page
-        - locate first HTML form and submit hidden fields + provided fields
+        This uses Reed's BFF application endpoint used by the web app:
+        POST {reed_bff_base}/application/
+
+        Success is only confirmed when response contains result.applicationId.
         """
         job = await self.get_job_details(job_id)
-
-        apply_target = job.job_url or job.external_url
-        if not apply_target:
-            raise RuntimeError("No application URL found for this Reed job.")
-        if not self._is_reed_url(apply_target):
+        if job.external_url:
             return {
                 "ok": False,
                 "job_id": job_id,
@@ -515,62 +511,93 @@ class ReedClient:
                     "This role uses an external application URL. "
                     "Automatic Reed account apply is not available."
                 ),
-                "external_url": apply_target,
+                "external_url": job.external_url,
+                "job_url": job.job_url,
             }
 
-        client = await self._get_web_client()
-        page_resp = await client.get(apply_target, headers=request_headers)
-        page_resp.raise_for_status()
+        headers = dict(request_headers or {})
+        headers.setdefault("User-Agent", "JobJob/0.1 (+https://github.com)")
+        headers.setdefault("Content-Type", "application/json")
+        headers.setdefault("Accept", "application/json")
 
-        form_action, hidden_inputs = self._extract_apply_form(page_resp.text)
-        if not form_action:
-            return {
-                "ok": False,
-                "job_id": job_id,
-                "message": (
-                    "No apply form found on the Reed job page. "
-                    "The listing may require a multi-step or external flow."
-                ),
-                "job_url": apply_target,
-            }
+        # If caller did not provide Cookie, reuse any configured/login cookies.
+        if "Cookie" not in headers:
+            web_client = await self._get_web_client()
+            cookie_header = "; ".join(
+                f"{k}={v}" for k, v in web_client.cookies.items()
+            )
+            if cookie_header:
+                headers["Cookie"] = cookie_header
 
-        submit_url = urljoin(str(page_resp.url), form_action)
-        payload = dict(hidden_inputs)
+        payload: dict[str, Any] = {
+            "jobId": job_id,
+            "coverLetterText": None,
+            "source": "searchResults-jobDrawer",
+        }
         if application_fields:
             payload.update(application_fields)
 
-        submit_resp = await client.post(
-            submit_url,
-            data=payload,
-            headers=request_headers,
-        )
-        submit_resp.raise_for_status()
-        body = submit_resp.text.lower()
+        submit_url = f"{settings.reed_bff_base.rstrip('/')}/application/"
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            submit_resp = await client.post(
+                submit_url,
+                json=payload,
+                headers=headers,
+            )
 
-        success_markers = (
-            "thank you",
-            "application submitted",
-            "application received",
-            "applied successfully",
+        response_body: dict[str, Any] | None = None
+        raw_text = submit_resp.text
+        try:
+            parsed = submit_resp.json()
+            if isinstance(parsed, dict):
+                response_body = parsed
+        except Exception:
+            response_body = None
+
+        application_id = None
+        if response_body:
+            application_id = (
+                response_body.get("result", {}) or {}
+            ).get("applicationId")
+
+        ok = (
+            200 <= submit_resp.status_code < 300
+            and application_id is not None
         )
-        applied = any(marker in body for marker in success_markers)
-        if not applied:
-            # Fallback heuristic when there is a redirect away from apply URL.
-            applied = "apply" not in str(submit_resp.url).lower()
+
+        error_codes: list[str] = []
+        if response_body:
+            errors = response_body.get("errors") or {}
+            parsed_codes = errors.get("errorCodes") if isinstance(errors, dict) else None
+            if isinstance(parsed_codes, list):
+                error_codes = [str(code) for code in parsed_codes]
+
+        if ok:
+            message = "Application sent."
+        else:
+            base_message = (
+                (response_body or {}).get("message")
+                if isinstance(response_body, dict)
+                else None
+            ) or "Application was not confirmed by Reed."
+            if error_codes:
+                message = f"{base_message} (errorCodes: {', '.join(error_codes)})"
+            else:
+                message = base_message
 
         return {
-            "ok": applied,
+            "ok": ok,
             "job_id": job_id,
             "job_title": job.job_title,
             "employer_name": job.employer_name,
-            "job_url": apply_target,
+            "job_url": job.job_url,
             "submit_url": submit_url,
-            "response_url": str(submit_resp.url),
-            "message": (
-                "Application submission request sent."
-                if applied
-                else "Form submitted, but successful application could not be confirmed."
-            ),
+            "status_code": submit_resp.status_code,
+            "application_id": application_id,
+            "message": message,
+            "error_codes": error_codes,
+            "response_json": response_body,
+            "response_text_preview": raw_text[:500] if not response_body else None,
         }
 
 
@@ -710,6 +737,23 @@ async def tool_apply_reed_job(
             return json.dumps({"ok": False, "error": f"Invalid headers JSON: {e}"})
 
     auth_attempts: list[dict[str, Any]] = []
+
+    # 0) Prefer explicit Authorization provided by caller.
+    if request_headers and request_headers.get("Authorization"):
+        result = await reed_client.apply_by_job_id(
+            job_id=job_id,
+            application_fields=fields,
+            request_headers=request_headers,
+        )
+        result["auth_method"] = "request_headers"
+        result["auth_attempts"] = [
+            {
+                "method": "request_headers",
+                "ok": True,
+                "message": "Used caller-provided Authorization header.",
+            }
+        ]
+        return json.dumps(result, indent=2)
 
     # 1) Try configured cookie first (if present).
     cookie_result = await reed_client.apply_configured_cookies()
