@@ -7,6 +7,8 @@ generate tailored CVs, and generate tailored cover letters.
 from __future__ import annotations
 
 import json
+import subprocess
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
@@ -258,6 +260,102 @@ async def tool_generate_cv(profile_json: str, job_json: str | None = None) -> st
         )
 
     return json.dumps({"pdf_path": pdf_path, "docx_path": docx_path})
+
+
+# ---------------------------------------------------------------------------
+# LaTeX CV Generation
+# ---------------------------------------------------------------------------
+
+# Path to the LaTeX template file (project root)
+_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "cv-template.tex"
+
+
+def _read_template_preamble() -> str:
+    """Read the template and return everything up to (but not including)
+    the DOCUMENT BODY banner / \\begin{document}."""
+    text = _TEMPLATE_PATH.read_text(encoding="utf-8")
+    # Split just before \begin{document}
+    marker = r"\begin{document}"
+    idx = text.find(marker)
+    if idx == -1:
+        raise RuntimeError("Template is missing \\begin{document}")
+    return text[:idx]
+
+
+def _get_template_text() -> str:
+    """Return the full template text for the LLM to reference."""
+    return _TEMPLATE_PATH.read_text(encoding="utf-8")
+
+
+async def tool_generate_cv_latex(latex_body: str) -> str:
+    r"""Compile a LaTeX CV to PDF.
+
+    The LLM provides the **complete** ``.tex`` file content (preamble
+    configuration + \\begin{document} ... \\end{document}).  This function
+    writes it to a temp directory, runs ``pdflatex`` twice (for page
+    references), and copies the resulting PDF into the output directory.
+
+    Args:
+        latex_body: The full LaTeX source for the CV (complete .tex file).
+
+    Returns:
+        JSON with ``pdf_path`` on success, or ``error`` on failure.
+    """
+    file_id = uuid.uuid4().hex[:8]
+    pdf_filename = f"cv_{file_id}.pdf"
+    pdf_out = settings.output_dir / pdf_filename
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tex_path = Path(tmpdir) / "cv.tex"
+        tex_path.write_text(latex_body, encoding="utf-8")
+
+        # Run pdflatex twice (resolves page refs / lastpage)
+        for pass_num in (1, 2):
+            result = subprocess.run(
+                [
+                    "pdflatex",
+                    "-interaction=nonstopmode",
+                    "-halt-on-error",
+                    "-output-directory",
+                    tmpdir,
+                    str(tex_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                # Extract meaningful error lines from the log
+                log_lines = result.stdout.splitlines()
+                error_lines = [
+                    line
+                    for line in log_lines
+                    if line.startswith("!") or "Error" in line
+                ]
+                error_msg = "\n".join(error_lines[:10]) or result.stdout[-2000:]
+                return json.dumps(
+                    {
+                        "error": f"pdflatex pass {pass_num} failed",
+                        "details": error_msg,
+                    }
+                )
+
+        compiled_pdf = Path(tmpdir) / "cv.pdf"
+        if not compiled_pdf.exists():
+            return json.dumps({"error": "pdflatex produced no PDF output"})
+
+        # Copy to output directory
+        import shutil
+
+        shutil.copy2(str(compiled_pdf), str(pdf_out))
+
+    return json.dumps(
+        {
+            "pdf_path": str(pdf_out),
+            "pdf_filename": pdf_filename,
+            "download_url": f"/api/documents/{pdf_filename}/download",
+        }
+    )
 
 
 # ---------------------------------------------------------------------------

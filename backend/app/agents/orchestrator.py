@@ -28,7 +28,9 @@ from app.config import settings
 from app.tools.document_tools import (
     tool_generate_cover_letter,
     tool_generate_cv,
+    tool_generate_cv_latex,
     tool_parse_cv,
+    _get_template_text,
 )
 from app.tools.profile_tools import tool_update_profile_summary
 from app.tools.reed_tools import tool_get_job_details, tool_search_jobs
@@ -44,6 +46,7 @@ _DEFAULT_TOOL_HANDLERS: dict[str, Any] = {
     "get_job_details": tool_get_job_details,
     "parse_cv": tool_parse_cv,
     "generate_cv": tool_generate_cv,
+    "generate_cv_latex": tool_generate_cv_latex,
     "generate_cover_letter": tool_generate_cover_letter,
 }
 
@@ -106,7 +109,23 @@ class Orchestrator:
 
     @property
     def _config(self) -> dict[str, Any]:
-        return MODE_CONFIG[self.mode]
+        cfg = MODE_CONFIG[self.mode]
+        # Inject the LaTeX template into the system prompt for CV_WRITER mode
+        if self.mode == AgentMode.CV_WRITER:
+            try:
+                template_text = _get_template_text()
+                system_with_template = (
+                    cfg["system"] + "\n\n## LaTeX CV Template\n\n"
+                    "Below is the complete LaTeX template. Copy the preamble "
+                    "verbatim (everything from \\documentclass to just before "
+                    "\\begin{document}), fill in the \\newcommand config values "
+                    "with user data, then write the document body.\n\n"
+                    "```latex\n" + template_text + "\n```"
+                )
+                return {**cfg, "system": system_with_template}
+            except Exception:
+                pass
+        return cfg
 
     def set_mode(self, mode: str) -> None:
         """Switch agent mode (changes system prompt and available tools)."""
@@ -142,9 +161,11 @@ class Orchestrator:
         max_iterations = 15  # safety limit for tool-use loops
         for _ in range(max_iterations):
             try:
+                # CV generation needs more tokens for the full LaTeX template
+                max_tok = 16384 if self.mode == AgentMode.CV_WRITER else 4096
                 response = await self.client.messages.create(
                     model=self._config["model"],
-                    max_tokens=4096,
+                    max_tokens=max_tok,
                     system=self._config["system"],
                     tools=self._config["tools"],
                     messages=self.messages,
@@ -189,6 +210,12 @@ class Orchestrator:
             # Add the assistant message to history
             self.messages.append({"role": "assistant", "content": assistant_content})
 
+            # If the response was truncated (max_tokens), warn and continue
+            if response.stop_reason == "max_tokens" and tool_uses:
+                logger.warning(
+                    "Response truncated by max_tokens — tool call input may be incomplete"
+                )
+
             # If no tool calls, we're done
             if not tool_uses:
                 final_text = "\n".join(text_parts)
@@ -203,7 +230,14 @@ class Orchestrator:
                     result = json.dumps({"error": f"Unknown tool: {tool_call['name']}"})
                 else:
                     try:
-                        result = await handler(**tool_call["input"])
+                        tool_input = tool_call["input"]
+                        logger.info(
+                            "Calling tool %s with %d keys: %s",
+                            tool_call["name"],
+                            len(tool_input),
+                            list(tool_input.keys()),
+                        )
+                        result = await handler(**tool_input)
                     except Exception as e:
                         logger.exception(f"Tool {tool_call['name']} failed")
                         result = json.dumps({"error": str(e)})
