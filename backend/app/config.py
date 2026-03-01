@@ -29,6 +29,10 @@ class Settings(BaseSettings):
 
     # --- Reed API ---
     reed_api_base: str = "https://www.reed.co.uk/api/1.0"
+    reed_base_url: str = "https://www.reed.co.uk"
+    reed_username: str = ""
+    reed_password: str = ""
+    reed_cookie_header: str = ""
 
     model_config = {
         "env_file": "../.env",

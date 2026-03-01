@@ -1,0 +1,29 @@
+{
+  "result": {
+    "applicationId": 618904331,
+    "redirectUrl": null,
+    "confirmationEventModel": {
+      "candidateApplication": "application",
+      "candidateId": 39821733,
+      "event": "confirmAppEvent",
+      "jobRecruiterTier": 2,
+      "jobCoverLetterStatus": "None",
+      "jobEasyApplyStatus": "Easy Apply Job: Internal + No Screening Question",
+      "jobId": 56455955,
+      "jobKnowledgeDomain": "Information Technology",
+      "jobLocation": "Irlam, Lancashire",
+      "jobOccupationL3": "Python Developer",
+      "jobOccupationL4": "",
+      "jobOccupationL5": "",
+      "jobOccupationL6": "",
+      "jobRecruiterName": "Michael Page Technology",
+      "jobRecruiterType": "Recruitment consultancy",
+      "jobSector": "Software Developer",
+      "jobTitle": "Python Developer",
+      "jobType": "Contract",
+      "siteSource": "Search Result Page",
+      "jobValueScore": 38.00
+    }
+  },
+  "metaData": []
+}

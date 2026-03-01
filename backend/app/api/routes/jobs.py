@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Optional
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -24,6 +25,7 @@ async def search_jobs(
     job_type: Optional[str] = Query(None, pattern="^(permanent|contract|temp)$"),
     limit: int = Query(25, ge=1, le=100),
     skip: int = Query(0, ge=0),
+    easy_apply_only: bool = Query(False),
 ):
     """Search for jobs on Reed. Returns raw job listings."""
     permanent = job_type == "permanent" if job_type else None
@@ -38,10 +40,35 @@ async def search_jobs(
         permanent=permanent,
         contract=contract,
         temp=temp,
+        easy_apply=easy_apply_only if easy_apply_only else None,
         results_to_take=limit,
         results_to_skip=skip,
     )
+    if easy_apply_only:
+        jobs = [j for j in jobs if _is_easy_apply_job(j.external_url, j.job_url, j.easy_apply)]
     return {"results": [j.model_dump(mode="json") for j in jobs], "count": len(jobs)}
+
+
+def _is_easy_apply_job(
+    external_url: str | None,
+    job_url: str | None,
+    easy_apply: bool | None,
+) -> bool:
+    """Best-effort Easy Apply detection.
+
+    Prioritizes explicit API signal, otherwise accepts jobs that remain on Reed
+    and do not provide an external application URL.
+    """
+    if easy_apply is True:
+        return True
+    if easy_apply is False:
+        return False
+    if external_url:
+        return False
+    if not job_url:
+        return False
+    parsed = urlparse(job_url)
+    return "reed.co.uk" in parsed.netloc
 
 
 @router.get("/{job_id}")

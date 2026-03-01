@@ -228,6 +228,53 @@ TOOL_GET_JOB_DETAILS = {
     },
 }
 
+TOOL_REED_LOGIN = {
+    "name": "reed_login",
+    "description": (
+        "Log in to a Reed account. Uses provided username/password or configured "
+        "REED_USERNAME/REED_PASSWORD."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "username": {
+                "type": "string",
+                "description": "Reed account username/email (optional)",
+            },
+            "password": {
+                "type": "string",
+                "description": "Reed account password (optional)",
+            },
+        },
+        "required": [],
+    },
+}
+
+TOOL_APPLY_REED_JOB = {
+    "name": "apply_reed_job",
+    "description": (
+        "Apply to a Reed job using a Reed job ID. The tool authenticates with "
+        "configured Reed credentials and submits the first detected apply form."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "job_id": {
+                "type": "integer",
+                "description": "The Reed job ID to apply for",
+            },
+            "application_fields_json": {
+                "type": "string",
+                "description": (
+                    "Optional JSON object string with extra form field values "
+                    "(e.g. phone, cover letter text, answers)."
+                ),
+            },
+        },
+        "required": ["job_id"],
+    },
+}
+
 TOOL_PARSE_CV = {
     "name": "parse_cv",
     "description": (
@@ -303,6 +350,8 @@ CV_WRITER_TOOLS = [TOOL_GENERATE_CV, TOOL_GENERATE_COVER_LETTER]
 ALL_TOOLS = [
     TOOL_SEARCH_JOBS,
     TOOL_GET_JOB_DETAILS,
+    TOOL_REED_LOGIN,
+    TOOL_APPLY_REED_JOB,
     TOOL_PARSE_CV,
     TOOL_GENERATE_CV,
     TOOL_GENERATE_COVER_LETTER,
