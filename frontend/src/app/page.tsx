@@ -141,10 +141,25 @@ export default function Home() {
                   const data = JSON.parse(dataStr);
                   let completedMsg = `Action ${data.name} completed.`;
 
-                  // Sneak peek into result to extract jobs if any
+                  // Update left sidebar from profile tool results
+                  if (data.name === "update_profile_summary" && data.result) {
+                    try {
+                      const resultObj = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+                      if (resultObj.status === "ok") {
+                        setProfile((prev) => ({
+                          ...prev,
+                          name: resultObj.name || prev?.name,
+                          jobPosition: resultObj.job_position || prev?.jobPosition,
+                          summaryBullets: resultObj.summary_bullets || prev?.summaryBullets || [],
+                        }));
+                        completedMsg = "Profile updated.";
+                      }
+                    } catch (e) { }
+                  }
+
+                  // Update right sidebar from job search results
                   if (data.name === "search_jobs" && data.result) {
                     try {
-                      // Result is often a JSON string returned by the tool
                       const resultObj = typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
                       if (Array.isArray(resultObj) && resultObj.length > 0 && resultObj[0].jobId) {
                         setJobs(resultObj);

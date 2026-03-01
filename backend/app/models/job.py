@@ -43,22 +43,38 @@ class JobListing(BaseModel):
         description="Short description (search) or full HTML (details)",
         serialization_alias="jobDescription",
     )
-    salary_min: Optional[float] = Field(default=None, serialization_alias="minimumSalary")
-    salary_max: Optional[float] = Field(default=None, serialization_alias="maximumSalary")
+    salary_min: Optional[float] = Field(
+        default=None, serialization_alias="minimumSalary"
+    )
+    salary_max: Optional[float] = Field(
+        default=None, serialization_alias="maximumSalary"
+    )
     currency: Optional[str] = "GBP"
     salary_type: Optional[str] = Field(
-        default=None, description="e.g. per annum, per day", serialization_alias="salaryType"
+        default=None,
+        description="e.g. per annum, per day",
+        serialization_alias="salaryType",
     )
-    contract_type: Optional[str] = Field(default=None, serialization_alias="contractType")
+    contract_type: Optional[str] = Field(
+        default=None, serialization_alias="contractType"
+    )
     job_type: Optional[str] = Field(default=None, serialization_alias="jobType")
     full_time: Optional[bool] = Field(default=None, serialization_alias="fullTime")
     part_time: Optional[bool] = Field(default=None, serialization_alias="partTime")
-    expiration_date: Optional[datetime] = Field(default=None, serialization_alias="expirationDate")
-    external_url: Optional[str] = Field(
-        default=None, description="Direct application URL", serialization_alias="externalUrl"
+    expiration_date: Optional[datetime] = Field(
+        default=None, serialization_alias="expirationDate"
     )
-    job_url: Optional[str] = Field(default=None, description="Reed listing URL", serialization_alias="jobUrl")
-    date_posted: Optional[datetime] = Field(default=None, serialization_alias="datePosted")
+    external_url: Optional[str] = Field(
+        default=None,
+        description="Direct application URL",
+        serialization_alias="externalUrl",
+    )
+    job_url: Optional[str] = Field(
+        default=None, description="Reed listing URL", serialization_alias="jobUrl"
+    )
+    date_posted: Optional[datetime] = Field(
+        default=None, serialization_alias="datePosted"
+    )
 
     @field_validator("date_posted", "expiration_date", mode="before")
     @classmethod

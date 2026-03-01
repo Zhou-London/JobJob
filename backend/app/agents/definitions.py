@@ -60,6 +60,28 @@ Any metrics you can share?"
 4. **Synthesis** — Once you have enough information (typically after 4-6 \
 exchanges), summarise the profile back to the user for confirmation.
 
+## CRITICAL — Progressive Profile Updates
+
+After EVERY user message that reveals information about them, you MUST call \
+`update_profile_summary` to save what you know so far. This updates the \
+user's sidebar in real-time. Rules:
+- Include their **name** and **job_position** (desired role) as soon as you \
+learn them.
+- Include ALL known bullet points each time — this is a **full replace**, \
+not an append.
+- Bullet points should be concise (e.g. "5+ years Python/Django", \
+"Led team of 8 engineers", "Seeking remote roles in London area").
+- Call the tool even from the very first message if the user shares any \
+relevant info.
+
+## CRITICAL — Automatic Job Search
+
+Once you know the user's target role (and ideally their location preference), \
+proactively call `search_jobs` to find matching opportunities. You do NOT need \
+to wait for the user to ask. Choose the best keywords based on what you have \
+learned about their skills and desired role. If the first search returns few \
+results, try alternative keywords.
+
 ## Rules
 - Ask at most 2-3 questions per message to avoid overwhelming the user.
 - Be encouraging — celebrate achievements they mention.
@@ -297,20 +319,33 @@ TOOL_GENERATE_COVER_LETTER = {
 TOOL_UPDATE_PROFILE_SUMMARY = {
     "name": "update_profile_summary",
     "description": (
-        "Save summarised profile bullet points into the user's session profile. "
-        "Call this after you have synthesised the user's career story into "
-        "concise bullet points (e.g. '5+ years Python/Django', "
-        "'Led team of 8 engineers'). The bullets are displayed in the sidebar."
+        "Save or update the user's profile sidebar. Call this EVERY time you "
+        "learn something new about the user — their name, desired role, skills, "
+        "experience, or achievements. The sidebar updates in real-time so the "
+        "user sees their profile being built as they talk. Include ALL known "
+        "bullet points each time (not just new ones)."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
+            "name": {
+                "type": "string",
+                "description": "The user's full name, if known.",
+            },
+            "job_position": {
+                "type": "string",
+                "description": (
+                    "The user's target / desired job title "
+                    "(e.g. 'Senior Python Developer')."
+                ),
+            },
             "summary_bullets": {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": (
-                    "List of concise bullet-point strings summarising the "
-                    "user's key skills, experience, and preferences."
+                    "Complete list of concise bullet-point strings summarising "
+                    "everything known so far about the user's skills, experience, "
+                    "achievements, and preferences. Always send the FULL list."
                 ),
             },
         },
@@ -319,7 +354,12 @@ TOOL_UPDATE_PROFILE_SUMMARY = {
 }
 
 # Grouped by agent role for convenience
-STORY_COACH_TOOLS = [TOOL_PARSE_CV, TOOL_UPDATE_PROFILE_SUMMARY]
+STORY_COACH_TOOLS = [
+    TOOL_PARSE_CV,
+    TOOL_UPDATE_PROFILE_SUMMARY,
+    TOOL_SEARCH_JOBS,
+    TOOL_GET_JOB_DETAILS,
+]
 JOB_MATCHER_TOOLS = [TOOL_SEARCH_JOBS, TOOL_GET_JOB_DETAILS]
 CV_WRITER_TOOLS = [TOOL_GENERATE_CV, TOOL_GENERATE_COVER_LETTER]
 # Auto-applier tools are Playwright MCP tools — not defined here
