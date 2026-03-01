@@ -33,7 +33,12 @@ from app.tools.document_tools import (
     _get_template_text,
 )
 from app.tools.profile_tools import tool_update_profile_summary
-from app.tools.reed_tools import tool_get_job_details, tool_search_jobs
+from app.tools.reed_tools import (
+    tool_apply_reed_job,
+    tool_get_job_details,
+    tool_reed_login,
+    tool_search_jobs,
+)
 
 if TYPE_CHECKING:
     from app.models.user_profile import UserProfile
@@ -44,6 +49,8 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TOOL_HANDLERS: dict[str, Any] = {
     "search_jobs": tool_search_jobs,
     "get_job_details": tool_get_job_details,
+    "reed_login": tool_reed_login,
+    "apply_reed_job": tool_apply_reed_job,
     "parse_cv": tool_parse_cv,
     "generate_cv": tool_generate_cv,
     "generate_cv_latex": tool_generate_cv_latex,

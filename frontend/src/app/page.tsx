@@ -358,6 +358,43 @@ export default function Home() {
     handleSend(prompt, "cv_writer");
   };
 
+  const handleApply = async (job: JobData): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/applications/apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session_id: sessionId,
+          job_id: job.jobId,
+          job_title: job.jobTitle,
+          employer_name: job.employerName,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        const detail = err?.detail || "Application failed";
+        setMessages((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), role: "agent", content: `Failed to apply for ${job.jobTitle}: ${detail}`, isToolCall: true },
+        ]);
+        return false;
+      }
+      const data = await res.json();
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), role: "agent", content: `Applied for **${job.jobTitle}** at ${job.employerName}. ${data.message || ""}` },
+      ]);
+      return data.status === "applied";
+    } catch (err) {
+      console.error("Apply error:", err);
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), role: "agent", content: `Error applying for ${job.jobTitle}.`, isToolCall: true },
+      ]);
+      return false;
+    }
+  };
+
   /** Render message text, converting markdown-style [text](url) into clickable links. */
   const renderMessageContent = (content: string) => {
     const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
@@ -569,7 +606,7 @@ export default function Home() {
       {/* Right Column: Matched Jobs — slides in when jobs data arrives */}
       {jobs.length > 0 && (
         <div className="w-80 flex-shrink-0 border-l border-gray-200 bg-gray-50/10 slide-in-right">
-          <JobsPanel jobs={jobs} onGenerateCoverLetter={handleGenerateCoverLetter} onGenerateCV={handleGenerateCV} />
+          <JobsPanel jobs={jobs} onGenerateCoverLetter={handleGenerateCoverLetter} onGenerateCV={handleGenerateCV} onApply={handleApply} />
         </div>
       )}
     </div>

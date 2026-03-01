@@ -29,6 +29,12 @@ class Settings(BaseSettings):
 
     # --- Reed API ---
     reed_api_base: str = "https://www.reed.co.uk/api/1.0"
+    reed_bff_base: str = "https://api.reed.co.uk/api-bff-jobseeker-jobs"
+    reed_base_url: str = "https://www.reed.co.uk"
+    reed_username: str = ""
+    reed_password: str = ""
+    reed_cookie_header: str = ""
+    reed_request_headers_file: str = ""
 
     model_config = {
         "env_file": "../.env",

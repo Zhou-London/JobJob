@@ -72,6 +72,10 @@ class JobListing(BaseModel):
     job_url: Optional[str] = Field(
         default=None, description="Reed listing URL", serialization_alias="jobUrl"
     )
+    easy_apply: Optional[bool] = Field(
+        default=None,
+        description="Whether Reed marks this listing as Easy Apply.",
+    )
     date_posted: Optional[datetime] = Field(
         default=None, serialization_alias="datePosted"
     )
@@ -97,6 +101,7 @@ class JobListing(BaseModel):
             date_posted=data.get("date"),
             job_url=data.get("jobUrl"),
             external_url=data.get("externalUrl"),
+            easy_apply=data.get("easyApply"),
         )
 
     @classmethod
@@ -118,6 +123,7 @@ class JobListing(BaseModel):
             expiration_date=data.get("expirationDate"),
             external_url=data.get("externalUrl"),
             job_url=data.get("jobUrl"),
+            easy_apply=data.get("easyApply"),
             date_posted=data.get("datePosted"),
         )
 

@@ -1,4 +1,5 @@
-import { Building2, MapPin, PoundSterling, ExternalLink, FileText, Briefcase, FileDown } from "lucide-react";
+import { Building2, MapPin, PoundSterling, ExternalLink, FileText, Briefcase, FileDown, Zap, Loader2, CheckCircle2, XCircle } from "lucide-react";
+import { useState } from "react";
 
 export interface JobData {
     jobId: number;
@@ -11,15 +12,30 @@ export interface JobData {
     jobUrl?: string;
 }
 
+export type ApplyStatus = "idle" | "loading" | "applied" | "failed";
+
 export default function JobsPanel({
     jobs,
     onGenerateCoverLetter,
     onGenerateCV,
+    onApply,
 }: {
     jobs: JobData[],
     onGenerateCoverLetter: (job: JobData) => void,
     onGenerateCV: (job: JobData) => void,
+    onApply: (job: JobData) => Promise<boolean>,
 }) {
+    const [applyStatus, setApplyStatus] = useState<Record<number, ApplyStatus>>({});
+
+    const handleApply = async (job: JobData) => {
+        setApplyStatus((prev) => ({ ...prev, [job.jobId]: "loading" }));
+        try {
+            const ok = await onApply(job);
+            setApplyStatus((prev) => ({ ...prev, [job.jobId]: ok ? "applied" : "failed" }));
+        } catch {
+            setApplyStatus((prev) => ({ ...prev, [job.jobId]: "failed" }));
+        }
+    };
     if (!jobs || jobs.length === 0) {
         return (
             <div className="h-full bg-gray-50/50 p-6 flex flex-col items-center justify-center text-center">
@@ -92,6 +108,32 @@ export default function JobsPanel({
                                 <FileText className="w-4 h-4" />
                                 Generate Cover Letter
                             </button>
+                            {(() => {
+                                const status = applyStatus[job.jobId] || "idle";
+                                return (
+                                    <button
+                                        onClick={() => handleApply(job)}
+                                        disabled={status === "loading" || status === "applied"}
+                                        className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm ${status === "applied"
+                                                ? "bg-green-600 text-white cursor-default"
+                                                : status === "failed"
+                                                    ? "bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                                                    : status === "loading"
+                                                        ? "bg-amber-500 text-white cursor-wait"
+                                                        : "bg-amber-500 text-white hover:bg-amber-600"
+                                            }`}
+                                    >
+                                        {status === "loading" && <Loader2 className="w-4 h-4 animate-spin" />}
+                                        {status === "applied" && <CheckCircle2 className="w-4 h-4" />}
+                                        {status === "failed" && <XCircle className="w-4 h-4" />}
+                                        {status === "idle" && <Zap className="w-4 h-4" />}
+                                        {status === "idle" && "Auto Apply"}
+                                        {status === "loading" && "Applying..."}
+                                        {status === "applied" && "Applied!"}
+                                        {status === "failed" && "Retry Apply"}
+                                    </button>
+                                );
+                            })()}
                             {job.jobUrl && (
                                 <a
                                     href={job.jobUrl}
