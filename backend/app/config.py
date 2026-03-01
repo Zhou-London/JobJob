@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     reed_username: str = ""
     reed_password: str = ""
     reed_cookie_header: str = ""
+    reed_request_headers_file: str = ""
 
     model_config = {
         "env_file": "../.env",

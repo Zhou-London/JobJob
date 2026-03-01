@@ -9,8 +9,13 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.config import settings
 from app.models.application import Application, ApplicationStatus
 from app.services.session_manager import session_manager
+from app.tools.request_headers import (
+    load_request_headers_from_file,
+    merge_headers_case_insensitive,
+)
 from app.tools.reed_tools import tool_apply_reed_job
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
@@ -26,6 +31,7 @@ class ApplyRequest(BaseModel):
     employer_name: str = ""
     dry_run: bool = False
     request_headers: dict[str, str] | None = None
+    request_headers_file: str | None = None
 
 
 @router.post("/apply")
@@ -63,11 +69,28 @@ async def trigger_apply(req: ApplyRequest):
     app.status = ApplicationStatus.APPLYING
     app.updated_at = datetime.utcnow()
 
+    resolved_headers = req.request_headers
+    header_file = req.request_headers_file or settings.reed_request_headers_file
+    if header_file:
+        try:
+            file_headers = load_request_headers_from_file(header_file)
+        except (FileNotFoundError, ValueError) as e:
+            app.status = ApplicationStatus.FAILED
+            app.error_message = str(e)
+            app.updated_at = datetime.utcnow()
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # Explicitly supplied headers override file-derived headers.
+        resolved_headers = merge_headers_case_insensitive(
+            file_headers,
+            req.request_headers,
+        )
+
     try:
         apply_raw = await tool_apply_reed_job(
             job_id=req.job_id,
             request_headers_json=(
-                json.dumps(req.request_headers) if req.request_headers else None
+                json.dumps(resolved_headers) if resolved_headers else None
             ),
         )
         apply_result = json.loads(apply_raw)
