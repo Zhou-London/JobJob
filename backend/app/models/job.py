@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def _parse_reed_date(value: str | datetime | None) -> datetime | None:
@@ -31,30 +31,50 @@ class JobType(str, Enum):
 class JobListing(BaseModel):
     """A single job listing from the Reed API."""
 
-    job_id: int = Field(description="Reed job ID")
-    employer_name: str = ""
-    employer_id: Optional[int] = None
-    job_title: str = ""
-    location_name: str = ""
+    model_config = ConfigDict(populate_by_name=True)
+
+    job_id: int = Field(description="Reed job ID", serialization_alias="jobId")
+    employer_name: str = Field(default="", serialization_alias="employerName")
+    employer_id: Optional[int] = Field(default=None, serialization_alias="employerId")
+    job_title: str = Field(default="", serialization_alias="jobTitle")
+    location_name: str = Field(default="", serialization_alias="locationName")
     description: str = Field(
-        default="", description="Short description (search) or full HTML (details)"
+        default="",
+        description="Short description (search) or full HTML (details)",
+        serialization_alias="jobDescription",
     )
-    salary_min: Optional[float] = None
-    salary_max: Optional[float] = None
+    salary_min: Optional[float] = Field(
+        default=None, serialization_alias="minimumSalary"
+    )
+    salary_max: Optional[float] = Field(
+        default=None, serialization_alias="maximumSalary"
+    )
     currency: Optional[str] = "GBP"
     salary_type: Optional[str] = Field(
-        default=None, description="e.g. per annum, per day"
+        default=None,
+        description="e.g. per annum, per day",
+        serialization_alias="salaryType",
     )
-    contract_type: Optional[str] = None
-    job_type: Optional[str] = None
-    full_time: Optional[bool] = None
-    part_time: Optional[bool] = None
-    expiration_date: Optional[datetime] = None
+    contract_type: Optional[str] = Field(
+        default=None, serialization_alias="contractType"
+    )
+    job_type: Optional[str] = Field(default=None, serialization_alias="jobType")
+    full_time: Optional[bool] = Field(default=None, serialization_alias="fullTime")
+    part_time: Optional[bool] = Field(default=None, serialization_alias="partTime")
+    expiration_date: Optional[datetime] = Field(
+        default=None, serialization_alias="expirationDate"
+    )
     external_url: Optional[str] = Field(
-        default=None, description="Direct application URL"
+        default=None,
+        description="Direct application URL",
+        serialization_alias="externalUrl",
     )
-    job_url: Optional[str] = Field(default=None, description="Reed listing URL")
-    date_posted: Optional[datetime] = None
+    job_url: Optional[str] = Field(
+        default=None, description="Reed listing URL", serialization_alias="jobUrl"
+    )
+    date_posted: Optional[datetime] = Field(
+        default=None, serialization_alias="datePosted"
+    )
 
     @field_validator("date_posted", "expiration_date", mode="before")
     @classmethod

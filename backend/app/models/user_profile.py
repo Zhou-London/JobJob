@@ -97,6 +97,10 @@ class UserProfile(BaseModel):
         default="",
         description="2-3 sentence professional summary",
     )
+    summary_bullets: list[str] = Field(
+        default_factory=list,
+        description="Key profile bullet points summarised by the Story Coach",
+    )
 
     # --- Skills ---
     technical_skills: list[str] = Field(default_factory=list)
