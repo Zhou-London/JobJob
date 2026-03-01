@@ -569,7 +569,7 @@ export default function Home() {
       {/* Right Column: Matched Jobs — slides in when jobs data arrives */}
       {jobs.length > 0 && (
         <div className="w-80 flex-shrink-0 border-l border-gray-200 bg-gray-50/10 slide-in-right">
-          <JobsPanel jobs={jobs} onGenerateCoverLetter={handleGenerateCoverLetter} />
+          <JobsPanel jobs={jobs} onGenerateCoverLetter={handleGenerateCoverLetter} onGenerateCV={handleGenerateCV} />
         </div>
       )}
     </div>
